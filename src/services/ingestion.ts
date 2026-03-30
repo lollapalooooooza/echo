@@ -5,7 +5,6 @@
 import { db } from "@/lib/db";
 import { scrapeUrl, crawlWebsite } from "@/services/scraping";
 import { storeEmbeddings } from "./embeddings";
-import { parseFile } from "./file-parser";
 import type { ScrapeResult } from "@/types";
 
 // ── Text Chunking ────────────────────────────────────────────
@@ -223,6 +222,7 @@ export async function ingestFile(buffer: Buffer, filename: string, userId: strin
   });
 
   try {
+    const { parseFile } = await import("./file-parser");
     const { text, title } = await parseFile(buffer, filename);
     if (!text || text.trim().length < 10) throw new Error("File contained no extractable text");
     console.log(`[Ingest] Parsed: "${title}" (${text.split(/\s+/).length} words)`);

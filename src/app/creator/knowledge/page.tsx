@@ -32,11 +32,28 @@ export default function KnowledgePage() {
   const load=()=>fetch("/api/knowledge/sources").then(r=>r.json()).then(d=>setSources(Array.isArray(d)?d:[])).finally(()=>setLoading(false));
   useEffect(()=>{load();},[]);
 
+  const readResponse = async (response: Response) => {
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      return response.json();
+    }
+
+    const text = await response.text();
+    return {
+      error: text
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 200) || `Request failed with status ${response.status}`,
+    };
+  };
+
   const ingest=async(body:any)=>{
     setIngesting(true);
     try {
       const r=await fetch("/api/knowledge/ingest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      const data=await r.json();
+      const data=await readResponse(r);
       if(!r.ok) alert(`Ingestion failed: ${data.error||"Unknown error"}${data.blocked?"\n\nThis site may be blocking automated access.":""}`);
       await load();
     } catch(e:any){ alert(`Network error: ${e.message}`); }
@@ -57,9 +74,12 @@ export default function KnowledgePage() {
     valid.forEach(f=>fd.append("files",f));
     try {
       const r=await fetch("/api/knowledge/upload",{method:"POST",body:fd});
-      const data=await r.json();
+      const data=await readResponse(r);
       if(data.results){
         setUploadProgress(data.results.map((r:any)=>({name:r.filename,status:r.error?`Error: ${r.error}`:"Done"})));
+      }
+      if(!r.ok && data.error){
+        alert(`Upload failed: ${data.error}`);
       }
       await load();
       setTimeout(()=>{setUploadProgress([]);setAddMode(null);},2000);
