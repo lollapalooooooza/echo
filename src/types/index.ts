@@ -4,6 +4,19 @@ export type SourceStatus = "PENDING" | "CRAWLING" | "PROCESSING" | "INDEXED" | "
 export type CharacterStatus = "DRAFT" | "PUBLISHED" | "OFFLINE";
 export type MessageRole = "USER" | "ASSISTANT" | "SYSTEM";
 
+// ── User ──────────────────────────────────────────────────────
+export interface UserProfile {
+  id: string;
+  name?: string | null;
+  username?: string | null;
+  bio?: string | null;
+  email?: string | null;
+  image?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string | null;
+}
+
 // ── Knowledge ─────────────────────────────────────────────────
 export interface KnowledgeSource {
   id: string;

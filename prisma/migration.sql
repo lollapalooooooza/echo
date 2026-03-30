@@ -12,13 +12,24 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE IF NOT EXISTS "User" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
   "name" TEXT,
+  "username" TEXT,
+  "bio" TEXT,
   "email" TEXT,
   "emailVerified" TIMESTAMP(3),
   "image" TEXT,
+  "lastLoginAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_username_key" ON "User"("username");
+
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "username" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "bio" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+CREATE UNIQUE INDEX IF NOT EXISTS "User_username_key" ON "User"("username");
 
 CREATE TABLE IF NOT EXISTS "Account" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,

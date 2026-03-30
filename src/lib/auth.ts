@@ -5,6 +5,7 @@ import GitHubProvider from "next-auth/providers/github";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { ensureUserProfile } from "@/services/user";
 
 const DEV_USER_ID = "dev-user-000";
 
@@ -35,6 +36,18 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: "jwt" },
   callbacks: {
+    async signIn({ user }) {
+      if (user?.id) {
+        await ensureUserProfile({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+        });
+      }
+
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) token.id = user.id;
       return token;
