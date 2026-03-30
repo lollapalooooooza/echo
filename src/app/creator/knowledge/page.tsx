@@ -58,6 +58,43 @@ async function readResponse(response: Response) {
   };
 }
 
+type CrawlLog = {
+  url: string;
+  title?: string;
+  phase: "reading" | "indexed" | "error";
+  error?: string;
+};
+
+type CrawlState = {
+  baseUrl: string;
+  totalDiscovered: number;
+  queued: number;
+  skippedExisting: number;
+  remaining: number;
+  processed: number;
+  indexed: number;
+  errors: number;
+  phase: "discovering" | "running" | "complete";
+  currentUrl?: string;
+  logs: CrawlLog[];
+};
+
+function createCrawlState(baseUrl: string): CrawlState {
+  return {
+    baseUrl,
+    totalDiscovered: 0,
+    queued: 0,
+    skippedExisting: 0,
+    remaining: 0,
+    processed: 0,
+    indexed: 0,
+    errors: 0,
+    phase: "discovering",
+    currentUrl: "",
+    logs: [],
+  };
+}
+
 export default function KnowledgePage() {
   const [sources, setSources] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,12 +108,22 @@ export default function KnowledgePage() {
   const [dragOver, setDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ name: string; status: string }[]>([]);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [crawlState, setCrawlState] = useState<CrawlState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const load = () => fetch("/api/knowledge/sources").then((r) => r.json()).then((d) => setSources(Array.isArray(d) ? d : [])).finally(() => setLoading(false));
+  const load = () =>
+    fetch("/api/knowledge/sources")
+      .then((r) => r.json())
+      .then((d) => setSources(Array.isArray(d) ? d : []))
+      .finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const ingest = async (body: any) => {
+    if (body.type === "website") {
+      await startWebsiteCrawl(body.url);
+      return;
+    }
+
     setIngesting(true);
     try {
       const response = await fetch("/api/knowledge/ingest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -94,6 +141,154 @@ export default function KnowledgePage() {
       setTitle("");
       setText("");
     }
+  };
+
+  const startWebsiteCrawl = async (baseUrl: string) => {
+    const trimmedUrl = baseUrl.trim();
+    if (!trimmedUrl) return;
+
+    setIngesting(true);
+    setAddMode("website");
+    setUrl(trimmedUrl);
+    setCrawlState(createCrawlState(trimmedUrl));
+
+    try {
+      const response = await fetch("/api/knowledge/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "website", url: trimmedUrl }),
+      });
+
+      if (!response.ok || !response.body) {
+        const data = await readResponse(response);
+        throw new Error(data.error || "Failed to start crawl");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const applyEvent = (event: any) => {
+        if (event.type === "error") {
+          throw new Error(event.error || "Crawl failed");
+        }
+
+        if (event.type === "discovered") {
+          setCrawlState((current) =>
+            current
+              ? {
+                  ...current,
+                  phase: "running",
+                  totalDiscovered: event.totalDiscovered,
+                  queued: event.queued,
+                  skippedExisting: event.skippedExisting,
+                  remaining: event.remaining,
+                }
+              : current
+          );
+          return;
+        }
+
+        if (event.type === "page") {
+          setCrawlState((current) => {
+            if (!current) return current;
+
+            const nextLogs = [
+              {
+                url: event.url,
+                title: event.title,
+                phase: event.phase as CrawlLog["phase"],
+                error: event.error,
+              } as CrawlLog,
+              ...current.logs.filter((log) => log.url !== event.url),
+            ].slice(0, 8);
+
+            return {
+              ...current,
+              phase: "running",
+              currentUrl: event.phase === "reading" ? event.url : current.currentUrl,
+              processed: event.processed,
+              queued: event.total,
+              indexed: event.indexed,
+              errors: event.errors,
+              remaining: event.remaining,
+              logs: nextLogs,
+            };
+          });
+          return;
+        }
+
+        if (event.type === "done") {
+          setCrawlState((current) =>
+            current
+              ? {
+                  ...current,
+                  phase: "complete",
+                  totalDiscovered: event.totalDiscovered,
+                  queued: event.queued,
+                  skippedExisting: event.skippedExisting,
+                  remaining: event.remaining,
+                  processed: event.processed,
+                  indexed: event.indexed,
+                  errors: event.errors,
+                  currentUrl: "",
+                }
+              : current
+          );
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          applyEvent(JSON.parse(line));
+        }
+      }
+
+      if (buffer.trim()) {
+        applyEvent(JSON.parse(buffer));
+      }
+
+      await load();
+    } catch (error: any) {
+      setCrawlState((current) =>
+        current
+          ? {
+              ...current,
+              phase: "complete",
+              errors: current.errors + 1,
+              currentUrl: "",
+              logs: [
+                {
+                  url: trimmedUrl,
+                  phase: "error" as const,
+                  error: error.message || "Crawl failed",
+                },
+                ...current.logs,
+              ].slice(0, 8),
+            }
+          : current
+      );
+      alert(`Crawl failed: ${error.message}`);
+    } finally {
+      setIngesting(false);
+    }
+  };
+
+  const continueCrawl = async (item: any) => {
+    if (ingesting) return;
+    const nextUrl = item.sourceUrl || (item.domainLabel ? `https://${item.domainLabel}/` : "");
+    if (!nextUrl) return;
+
+    setSelectedItem(null);
+    await startWebsiteCrawl(nextUrl);
   };
 
   const uploadFiles = async (files: FileList | File[]) => {
@@ -168,6 +363,10 @@ export default function KnowledgePage() {
 
   const groupedItems = groupKnowledgeSources(sources);
   const filtered = groupedItems.filter((item) => !search || item.searchText.includes(search.toLowerCase()));
+  const crawlProgressPercent =
+    crawlState && crawlState.queued > 0
+      ? Math.min(100, Math.round((crawlState.processed / crawlState.queued) * 100))
+      : 0;
 
   return (
     <div className="space-y-6">
@@ -224,12 +423,80 @@ export default function KnowledgePage() {
 
       {addMode === "website" && (
         <div className="space-y-2 rounded-xl border border-border bg-white p-4">
-          <p className="text-[13px] text-muted-foreground">Enter your site URL. EchoNest will crawl the pages, then group pages from the same main domain together in your library.</p>
+          <p className="text-[13px] text-muted-foreground">
+            Enter a site URL. Each crawl reads up to 20 new pages so the job stays light, and you can continue later from the folder to pick up the next batch.
+          </p>
           <div className="flex items-center gap-2">
             <input autoFocus value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://your-blog.com" className="h-9 flex-1 rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" />
-            <button disabled={ingesting || !url.trim()} onClick={() => ingest({ type: "website", url })} className="rounded-md bg-foreground px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{ingesting ? "Crawling…" : "Crawl All Pages"}</button>
+            <button disabled={ingesting || !url.trim()} onClick={() => void startWebsiteCrawl(url)} className="rounded-md bg-foreground px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{ingesting ? "Crawling…" : "Crawl Next 20"}</button>
             <button onClick={() => setAddMode(null)}><X className="h-4 w-4 text-muted-foreground" /></button>
           </div>
+
+          {crawlState && (
+            <div className="rounded-2xl border border-border/70 bg-neutral-50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[12px] font-semibold text-foreground">
+                    {crawlState.phase === "complete" ? "Crawl summary" : "Reading pages"}
+                  </p>
+                  <p className="mt-1 text-[12px] text-muted-foreground">
+                    {crawlState.baseUrl}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <span className="rounded-full bg-white px-2.5 py-1 text-neutral-700 shadow-sm">{crawlState.indexed} indexed</span>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-neutral-700 shadow-sm">{crawlState.errors} errors</span>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-neutral-700 shadow-sm">{crawlState.skippedExisting} skipped</span>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-neutral-700 shadow-sm">{crawlState.remaining} more waiting</span>
+                </div>
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-full bg-neutral-200">
+                <div className="h-2 rounded-full bg-foreground transition-all" style={{ width: `${crawlProgressPercent}%` }} />
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
+                <span>
+                  {crawlState.queued > 0
+                    ? `${crawlState.processed} of ${crawlState.queued} pages processed`
+                    : `Found ${crawlState.totalDiscovered} pages, but no new pages needed crawling`}
+                </span>
+                <span>{crawlState.totalDiscovered} discovered</span>
+              </div>
+
+              {crawlState.currentUrl && crawlState.phase !== "complete" && (
+                <p className="mt-3 truncate text-[12px] text-foreground">
+                  Reading now: {crawlState.currentUrl}
+                </p>
+              )}
+
+              {crawlState.logs.length > 0 && (
+                <div className="mt-4 space-y-2 rounded-2xl border border-border/60 bg-white p-3">
+                  {crawlState.logs.map((log, index) => (
+                    <div key={`${log.url}-${index}`} className="flex items-start gap-3 text-[12px]">
+                      <span
+                        className={cn(
+                          "mt-0.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                          log.phase === "indexed"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : log.phase === "error"
+                              ? "bg-rose-100 text-rose-700"
+                              : "bg-blue-100 text-blue-700"
+                        )}
+                      >
+                        {log.phase}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-foreground">{log.title || log.url}</p>
+                        <p className="truncate text-muted-foreground">{log.url}</p>
+                        {log.error && <p className="mt-1 text-rose-600">{log.error}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -408,6 +675,16 @@ export default function KnowledgePage() {
                 )}
 
                 <div className="flex gap-2 border-t border-border pt-2">
+                  {selectedItem.kind === "domain" && (
+                    <button
+                      onClick={() => void continueCrawl(selectedItem)}
+                      disabled={ingesting}
+                      className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[12px] font-medium text-foreground hover:bg-muted/30 disabled:opacity-50"
+                    >
+                      <RefreshCw className={cn("h-3.5 w-3.5", ingesting && "animate-spin")} />
+                      Continue crawl
+                    </button>
+                  )}
                   <button
                     onClick={async () => {
                       const deleted = await deleteSources(selectedItem.sourceIds);

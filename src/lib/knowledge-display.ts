@@ -43,6 +43,16 @@ const MULTI_PART_TLDS = new Set([
   "com.mx",
 ]);
 
+const HOSTED_SUBDOMAIN_SUFFIXES = new Set([
+  "blogspot.com",
+  "substack.com",
+  "github.io",
+  "wordpress.com",
+  "tumblr.com",
+  "ghost.io",
+  "notion.site",
+]);
+
 const STATUS_PRIORITY: Record<string, number> = {
   ERROR: 5,
   CRAWLING: 4,
@@ -69,6 +79,11 @@ export function getDomainLabel(url?: string | null) {
     const hostname = stripWww(new URL(url).hostname.toLowerCase());
     const parts = hostname.split(".").filter(Boolean);
     if (parts.length <= 2) return hostname;
+
+    const hostedSuffix = parts.slice(-2).join(".");
+    if (HOSTED_SUBDOMAIN_SUFFIXES.has(hostedSuffix)) {
+      return hostname;
+    }
 
     const suffix = parts.slice(-2).join(".");
     if (MULTI_PART_TLDS.has(suffix) && parts.length >= 3) {

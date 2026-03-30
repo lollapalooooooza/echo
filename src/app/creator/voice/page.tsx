@@ -153,10 +153,10 @@ export default function VoiceLibraryPage() {
             Voice Library
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
-            Manage custom voices with a real library, not a hidden upload form.
+            Voice library
           </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            Clone your voice, preview every option, see which characters use it, and keep your voice stack organized before you build new characters.
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Clone, preview, assign, and reuse voices across characters.
           </p>
         </div>
         <Link
@@ -181,7 +181,7 @@ export default function VoiceLibraryPage() {
               <Mic className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">Clone a new custom voice</h2>
+              <h2 className="text-lg font-semibold">Clone voice</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Upload a clear sample between 30 seconds and 5 minutes. This creates a reusable voice you can assign across multiple characters.
               </p>
@@ -243,7 +243,7 @@ export default function VoiceLibraryPage() {
               <Wand2 className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">How voices fit into characters</h2>
+              <h2 className="text-lg font-semibold">How it works</h2>
               <p className="mt-1 text-sm leading-relaxed text-white/72">
                 Voices are now managed separately, then selected while creating or editing a character. That keeps your library clean and reusable.
               </p>

@@ -3,10 +3,9 @@
 // ──────────────────────────────────────────────────────────────
 
 import { db } from "@/lib/db";
-import { scrapeUrl, crawlWebsite } from "@/services/scraping";
+import { discoverPages, scrapeUrl } from "@/services/scraping";
 import { summarizeKnowledgeSource } from "@/services/content-intelligence";
 import { storeEmbeddings } from "./embeddings";
-import type { ScrapeResult } from "@/types";
 
 // ── Text Chunking ────────────────────────────────────────────
 
@@ -99,6 +98,65 @@ async function processAndStoreChunks(
   return records.length;
 }
 
+function stripWww(hostname: string) {
+  return hostname.replace(/^www\./i, "");
+}
+
+function normalizeCrawlUrl(url: string) {
+  const parsed = new URL(url);
+  parsed.hash = "";
+  parsed.search = "";
+
+  if ((parsed.protocol === "https:" && parsed.port === "443") || (parsed.protocol === "http:" && parsed.port === "80")) {
+    parsed.port = "";
+  }
+
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+  return parsed.toString();
+}
+
+function isSameCrawlDomain(candidate: string, baseUrl: string) {
+  try {
+    return stripWww(new URL(candidate).hostname.toLowerCase()) === stripWww(new URL(baseUrl).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export type WebsiteCrawlProgressEvent =
+  | {
+      type: "discovered";
+      baseUrl: string;
+      totalDiscovered: number;
+      queued: number;
+      skippedExisting: number;
+      remaining: number;
+      limit: number;
+    }
+  | {
+      type: "page";
+      phase: "reading" | "indexed" | "error";
+      url: string;
+      title?: string;
+      processed: number;
+      total: number;
+      indexed: number;
+      errors: number;
+      remaining: number;
+      error?: string;
+    }
+  | {
+      type: "done";
+      baseUrl: string;
+      totalDiscovered: number;
+      queued: number;
+      skippedExisting: number;
+      remaining: number;
+      processed: number;
+      indexed: number;
+      errors: number;
+    };
+
 export async function ingestUrl(url: string, userId: string): Promise<string> {
   console.log(`[Ingest] Starting URL: ${url}`);
   const source = await db.knowledgeSource.create({
@@ -184,13 +242,84 @@ export async function ingestText(title: string, text: string, userId: string): P
   }
 }
 
-export async function ingestWebsite(baseUrl: string, userId: string) {
+export async function* ingestWebsiteWithProgress(
+  baseUrl: string,
+  userId: string,
+  options: { maxPages?: number } = {}
+): AsyncGenerator<WebsiteCrawlProgressEvent> {
   console.log(`[Ingest] Starting website crawl: ${baseUrl}`);
-  const { results, errors, totalDiscovered } = await crawlWebsite(baseUrl, { maxPages: 30, mode: "stealth" });
 
+  const maxPages = Math.min(options.maxPages || 20, 20);
+  const discoveryLimit = Math.max(maxPages * 6, 120);
+  const normalizedBaseUrl = normalizeCrawlUrl(baseUrl);
+  const discoveredUrls = Array.from(
+    new Set(
+      (await discoverPages(normalizedBaseUrl, discoveryLimit))
+        .map((url) => normalizeCrawlUrl(url))
+        .filter((url) => isSameCrawlDomain(url, normalizedBaseUrl))
+    )
+  );
+
+  const existingSources = await db.knowledgeSource.findMany({
+    where: {
+      userId,
+      type: { in: ["WEBSITE", "URL"] },
+      sourceUrl: { not: null },
+    },
+    select: { sourceUrl: true, status: true },
+  });
+
+  const existingUrls = new Set(
+    existingSources
+      .filter((source) => source.status === "INDEXED")
+      .map((source) => source.sourceUrl)
+      .filter((sourceUrl): sourceUrl is string => !!sourceUrl && isSameCrawlDomain(sourceUrl, normalizedBaseUrl))
+      .map((sourceUrl) => normalizeCrawlUrl(sourceUrl))
+  );
+
+  const newUrls = discoveredUrls.filter((url) => !existingUrls.has(url));
+  const queuedUrls = newUrls.slice(0, maxPages);
+  const skippedExisting = discoveredUrls.length - newUrls.length;
+  let remaining = Math.max(newUrls.length - queuedUrls.length, 0);
+
+  yield {
+    type: "discovered",
+    baseUrl: normalizedBaseUrl,
+    totalDiscovered: discoveredUrls.length,
+    queued: queuedUrls.length,
+    skippedExisting,
+    remaining,
+    limit: maxPages,
+  };
+
+  let processed = 0;
   let indexed = 0;
-  for (const result of results) {
+  let errors = 0;
+
+  for (const url of queuedUrls) {
+    const source = await db.knowledgeSource.create({
+      data: {
+        userId,
+        type: "WEBSITE",
+        title: url,
+        sourceUrl: url,
+        status: "CRAWLING",
+      },
+    });
+
+    yield {
+      type: "page",
+      phase: "reading",
+      url,
+      processed,
+      total: queuedUrls.length,
+      indexed,
+      errors,
+      remaining,
+    };
+
     try {
+      const result = await scrapeUrl(url, { mode: "stealth" });
       const summaryMeta = await summarizeKnowledgeSource({
         title: result.title,
         text: result.content,
@@ -198,12 +327,11 @@ export async function ingestWebsite(baseUrl: string, userId: string) {
         type: "WEBSITE",
       });
       const topic = summaryMeta.topic || detectTopic(result.content, result.title);
-      const source = await db.knowledgeSource.create({
+
+      await db.knowledgeSource.update({
+        where: { id: source.id },
         data: {
-          userId,
-          type: "WEBSITE",
           title: summaryMeta.title || result.title,
-          sourceUrl: result.url,
           cleanedText: result.content,
           summary: summaryMeta.summary,
           publishDate: result.publishDate ? new Date(result.publishDate) : null,
@@ -218,13 +346,85 @@ export async function ingestWebsite(baseUrl: string, userId: string) {
         where: { id: source.id },
         data: { status: "INDEXED", chunkCount },
       });
+
       indexed++;
-    } catch (e: any) {
-      console.error(`[Ingest] Failed to process ${result.url}: ${e.message}`);
+      processed++;
+
+      yield {
+        type: "page",
+        phase: "indexed",
+        url,
+        title: summaryMeta.title || result.title,
+        processed,
+        total: queuedUrls.length,
+        indexed,
+        errors,
+        remaining,
+      };
+    } catch (err: any) {
+      processed++;
+      errors++;
+      console.error(`[Ingest] Failed to process ${url}: ${err.message}`);
+
+      await db.knowledgeSource.update({
+        where: { id: source.id },
+        data: {
+          status: "ERROR",
+          errorMsg: err.message,
+        },
+      });
+
+      yield {
+        type: "page",
+        phase: "error",
+        url,
+        processed,
+        total: queuedUrls.length,
+        indexed,
+        errors,
+        remaining,
+        error: err.message,
+      };
     }
   }
 
-  return { total: totalDiscovered, indexed, errors: errors.length };
+  yield {
+    type: "done",
+    baseUrl: normalizedBaseUrl,
+    totalDiscovered: discoveredUrls.length,
+    queued: queuedUrls.length,
+    skippedExisting,
+    remaining,
+    processed,
+    indexed,
+    errors,
+  };
+}
+
+export async function ingestWebsite(baseUrl: string, userId: string, options: { maxPages?: number } = {}) {
+  let result = {
+    total: 0,
+    indexed: 0,
+    errors: 0,
+    queued: 0,
+    skippedExisting: 0,
+    remaining: 0,
+  };
+
+  for await (const event of ingestWebsiteWithProgress(baseUrl, userId, options)) {
+    if (event.type === "done") {
+      result = {
+        total: event.totalDiscovered,
+        indexed: event.indexed,
+        errors: event.errors,
+        queued: event.queued,
+        skippedExisting: event.skippedExisting,
+        remaining: event.remaining,
+      };
+    }
+  }
+
+  return result;
 }
 
 export async function ingestFile(buffer: Buffer, filename: string, userId: string): Promise<string> {

@@ -42,6 +42,7 @@ export default function CreatorDashboard() {
 
   const indexed = sources.filter((source) => source.status === "INDEXED").length;
   const totalConversations = characters.reduce((sum: number, character: any) => sum + (character._count?.conversations || 0), 0);
+  const publishedCount = characters.filter((character: any) => character.status === "PUBLISHED").length;
 
   return (
     <div className="space-y-8">
@@ -54,11 +55,14 @@ export default function CreatorDashboard() {
               Creator Dashboard
             </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
-              Build better live characters from one place.
+              Your live character workspace
             </h1>
-            <p className="mt-3 text-sm leading-7 text-white/72">
-              Track what your characters know, what users are asking, and which characters are actually pulling conversation weight.
-            </p>
+            <p className="mt-3 text-sm leading-7 text-white/72">Knowledge, voices, analytics, and publishing in one place.</p>
+            <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-white/80">
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{indexed} indexed sources</span>
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{characters.length} characters</span>
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{publishedCount} published</span>
+            </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/creator/character/new" className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-slate-900 transition-opacity hover:opacity-90">
@@ -81,7 +85,7 @@ export default function CreatorDashboard() {
         <Stat icon={BookOpen} label="Sources Indexed" value={indexed} href="/creator/knowledge" />
         <Stat icon={MessageCircle} label="Conversations" value={totalConversations} href="/creator/analytics" />
         <Stat icon={User} label="Characters" value={characters.length} href="/creator/character" />
-        <Stat icon={BarChart3} label="Published" value={characters.filter((character: any) => character.status === "PUBLISHED").length} href="/creator/character" />
+        <Stat icon={BarChart3} label="Published" value={publishedCount} href="/creator/character" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">

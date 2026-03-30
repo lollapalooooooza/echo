@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { ingestUrl, ingestText, ingestWebsite } from "@/services/ingestion";
+import { ingestUrl, ingestText, ingestWebsiteWithProgress } from "@/services/ingestion";
 
 export const maxDuration = 120;
 
@@ -22,8 +22,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, sourceId });
     }
     if (body.type === "website") {
-      const result = await ingestWebsite(body.url, userId);
-      return NextResponse.json({ success: true, ...result });
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const event of ingestWebsiteWithProgress(body.url, userId, { maxPages: 20 })) {
+              controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+            }
+          } catch (err: any) {
+            controller.enqueue(
+              encoder.encode(
+                `${JSON.stringify({
+                  type: "error",
+                  error: err.message,
+                  blocked: err.message?.includes("blocked access"),
+                })}\n`
+              )
+            );
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "application/x-ndjson; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
+      });
     }
     return NextResponse.json({ error: "type must be url, text, or website" }, { status: 400 });
   } catch (err: any) {
