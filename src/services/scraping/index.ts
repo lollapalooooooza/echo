@@ -339,6 +339,8 @@ async function nativeFetch(url: string, opts: ScrapeOptions, retries = 2): Promi
 
       const html = await res.text();
       if (html.length < 100) throw new Error("Page too short");
+      const unsupportedShellMessage = getUnsupportedShellPageMessage(url, html);
+      if (unsupportedShellMessage) throw new Error(unsupportedShellMessage);
 
       const title = extractTitleFromHtml(html) || extractTitleFromUrl(url);
       const content = cleanHtml(html);
@@ -359,7 +361,7 @@ async function nativeFetch(url: string, opts: ScrapeOptions, retries = 2): Promi
       };
     } catch (e: any) {
       lastError = e;
-      if (e.message?.includes("blocked access")) throw e;
+      if (!isRetryableNativeFetchError(e)) throw e;
       if (attempt < retries) {
         console.log(`[Scrape] Attempt ${attempt + 1} failed for ${url}: ${e.message}. Retrying...`);
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
@@ -368,6 +370,51 @@ async function nativeFetch(url: string, opts: ScrapeOptions, retries = 2): Promi
   }
 
   throw new Error(`Failed to scrape ${url} after ${retries + 1} attempts: ${lastError.message}`);
+}
+
+function isRetryableNativeFetchError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (!message) return true;
+
+  if (message.includes("blocked access")) return false;
+  if (message.startsWith("HTTP 4")) return false;
+  if (message.includes("Non-HTML content type")) return false;
+  if (message.includes("Page too short")) return false;
+  if (message.includes("Not enough text content after cleaning")) return false;
+  if (message.includes("expose readable article content")) return false;
+  if (message.includes("empty shell page")) return false;
+
+  return true;
+}
+
+function getUnsupportedShellPageMessage(url: string, html: string) {
+  if (isCampaignArchiveHomeUrl(url)) {
+    return "Mailchimp campaign archive home pages do not expose readable article content. Crawl a specific campaign page instead of /home.";
+  }
+
+  const visibleText = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (html.length < 1200 && visibleText.length < 30) {
+    return "This page loads as an empty shell page and does not expose readable article content for crawling.";
+  }
+
+  return null;
+}
+
+function isCampaignArchiveHomeUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "") || "/";
+    return /(^|\.)campaign-archive\.com$/i.test(parsed.hostname) && normalizedPath === "/home";
+  } catch {
+    return false;
+  }
 }
 
 // ── Native Link Discovery ────────────────────────────────────
