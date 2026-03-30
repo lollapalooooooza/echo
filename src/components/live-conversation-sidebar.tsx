@@ -41,7 +41,7 @@ type RecognitionInstance = {
   stop: () => void;
   onresult: ((event: any) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: any) => void) | null;
 };
 
 function readSseBlocks(buffer: string) {
@@ -59,13 +59,13 @@ export function LiveConversationSidebar({ character }: { character: any }) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
-  const [autoCapture, setAutoCapture] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [captureError, setCaptureError] = useState("");
 
   const queueRef = useRef<string[]>([]);
   const processingRef = useRef(false);
   const recognitionRef = useRef<RecognitionInstance | null>(null);
+  const capturedSegmentsRef = useRef<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<SidebarMessage[]>([]);
   const conversationIdRef = useRef<string | null>(null);
@@ -73,12 +73,6 @@ export function LiveConversationSidebar({ character }: { character: any }) {
     () => typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window),
     []
   );
-
-  useEffect(() => {
-    if (supportsSpeech) {
-      setAutoCapture(true);
-    }
-  }, [supportsSpeech]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -227,54 +221,53 @@ export function LiveConversationSidebar({ character }: { character: any }) {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setListening(false);
-    setInterimTranscript("");
   }, []);
 
   const startRecognition = useCallback(() => {
-    if (!supportsSpeech || recognitionRef.current) return;
+    if (!supportsSpeech || recognitionRef.current || loading) return;
 
     const RecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!RecognitionCtor) return;
 
     const recognition: RecognitionInstance = new RecognitionCtor();
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
+    capturedSegmentsRef.current = [];
+    setInterimTranscript("");
 
     recognition.onresult = (event: any) => {
       let interim = "";
-      const finalized: string[] = [];
 
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const transcript = event.results[i][0]?.transcript?.trim();
         if (!transcript) continue;
 
         if (event.results[i].isFinal) {
-          finalized.push(transcript);
+          capturedSegmentsRef.current.push(transcript);
         } else {
           interim += `${transcript} `;
         }
       }
 
-      setInterimTranscript(interim.trim());
-      finalized.forEach((text) => enqueueMessage(text));
+      setInterimTranscript([...capturedSegmentsRef.current, interim.trim()].filter(Boolean).join(" "));
     };
 
     recognition.onend = () => {
       recognitionRef.current = null;
       setListening(false);
+      const finalized = capturedSegmentsRef.current.join(" ").replace(/\s+/g, " ").trim();
+      capturedSegmentsRef.current = [];
       setInterimTranscript("");
-      if (autoCapture) {
-        setTimeout(() => {
-          if (autoCapture && !recognitionRef.current) {
-            startRecognition();
-          }
-        }, 200);
+      if (finalized) {
+        enqueueMessage(finalized);
       }
     };
 
-    recognition.onerror = () => {
-      setCaptureError("Speech capture paused. You can keep typing or restart capture.");
+    recognition.onerror = (event?: any) => {
+      if (event?.error === "aborted") return;
+      setCaptureError("Voice capture stopped before your turn finished. You can type instead or try recording again.");
+      capturedSegmentsRef.current = [];
       recognitionRef.current = null;
       setListening(false);
       setInterimTranscript("");
@@ -287,23 +280,20 @@ export function LiveConversationSidebar({ character }: { character: any }) {
       setCaptureError("");
     } catch (error) {
       console.error("[LiveConversationSidebar] Speech start failed:", error);
-      setCaptureError("Speech capture could not start in this browser tab.");
+      setCaptureError("Voice capture could not start in this browser tab.");
+      capturedSegmentsRef.current = [];
       recognitionRef.current = null;
       setListening(false);
     }
-  }, [autoCapture, enqueueMessage, supportsSpeech]);
+  }, [enqueueMessage, loading, supportsSpeech]);
 
   useEffect(() => {
-    if (!supportsSpeech) return;
-    if (autoCapture) {
-      startRecognition();
-    } else {
+    if (loading && recognitionRef.current) {
       stopRecognition();
     }
-    return () => {
-      stopRecognition();
-    };
-  }, [autoCapture, startRecognition, stopRecognition, supportsSpeech]);
+  }, [loading, stopRecognition]);
+
+  useEffect(() => () => stopRecognition(), [stopRecognition]);
 
   return (
     <aside className="flex h-full min-h-[32rem] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-black/30 backdrop-blur-sm">
@@ -312,34 +302,51 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           <div>
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-emerald-100/65">
               <Sparkles className="h-3.5 w-3.5" />
-              Companion Transcript
+              Dual-Channel Transcript
             </div>
             <p className="mt-2 text-sm leading-relaxed text-white/72">
-              This fallback companion logs questions, generates cited answers, and feeds owner analytics while the Runway live session is running.
+              User turns and character turns now stay in separate lanes. We only record your side when you press the mic, then stream the character reply back into its own thread.
             </p>
           </div>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setAutoCapture((current) => !current)}
+            type="button"
+            onClick={() => {
+              if (listening) {
+                stopRecognition();
+              } else {
+                startRecognition();
+              }
+            }}
+            disabled={!supportsSpeech || loading}
             className={cn(
               "inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[12px] font-medium transition-colors",
-              autoCapture
+              listening
                 ? "bg-emerald-400/15 text-emerald-100"
-                : "bg-white/5 text-white/60 hover:bg-white/10"
+                : "bg-white/5 text-white/60 hover:bg-white/10",
+              (!supportsSpeech || loading) && "cursor-not-allowed opacity-50"
             )}
           >
-            {autoCapture ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
-            {autoCapture ? "Auto capture on" : "Auto capture off"}
+            {listening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+            {listening ? "Stop recording your turn" : "Record your turn"}
           </button>
-          {supportsSpeech && (
+          {supportsSpeech ? (
             <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-white/45">
-              {listening ? "Listening for final questions" : "Waiting for capture"}
+              {listening
+                ? "Listening to your mic only"
+                : loading
+                  ? `${character.name} is replying`
+                  : "Press record when it is your turn"}
+            </span>
+          ) : (
+            <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-white/45">
+              Voice capture unavailable in this browser
             </span>
           )}
         </div>
-        {interimTranscript && <p className="mt-2 text-[12px] text-white/45">Hearing: {interimTranscript}</p>}
+        {interimTranscript && <p className="mt-2 text-[12px] text-white/45">Your turn: {interimTranscript}</p>}
         {captureError && <p className="mt-2 text-[12px] text-amber-200/85">{captureError}</p>}
       </div>
 
@@ -355,7 +362,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           <div>
             <p className="mb-0.5 text-[11px] text-white/40">{character.name}</p>
             <p className="text-[13px] leading-relaxed text-white/65">
-              Ask here if you want a searchable transcript, cited article cards, and saved owner analytics.
+              Ask here for a saved transcript, source cards, and owner analytics without blending your voice with the character.
             </p>
           </div>
         </div>
@@ -376,7 +383,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
 
         {messages.map((message) => (
           <div key={message.id} className={cn("flex gap-2.5", message.role === "user" && "flex-row-reverse")}>
-            {message.role === "assistant" && (
+            {message.role === "assistant" ? (
               character.avatarUrl ? (
                 <img src={character.avatarUrl} alt="" className="mt-0.5 h-7 w-7 flex-shrink-0 rounded-full bg-white/10 object-cover" />
               ) : (
@@ -384,14 +391,18 @@ export function LiveConversationSidebar({ character }: { character: any }) {
                   {character.name?.[0]}
                 </div>
               )
+            ) : (
+              <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-[11px] font-semibold text-emerald-100">
+                You
+              </div>
             )}
 
             <div className={cn("max-w-[88%]", message.role === "user" && "text-right")}>
-              <p className="mb-1 text-[11px] text-white/35">{message.role === "user" ? "You" : `${character.name} companion`}</p>
+              <p className="mb-1 text-[11px] text-white/35">{message.role === "user" ? "You" : character.name}</p>
               <div
                 className={cn(
                   "rounded-2xl px-3.5 py-3 text-[13px] leading-relaxed",
-                  message.role === "user" ? "bg-white/12 text-white" : "bg-white/6 text-white/76"
+                  message.role === "user" ? "bg-emerald-400/14 text-white" : "bg-white/6 text-white/76"
                 )}
               >
                 {message.streaming && !message.content ? (
@@ -492,7 +503,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={loading ? "Companion is answering…" : "Type a question to save a cited transcript…"}
+            placeholder={loading ? `${character.name} is replying…` : "Type your next turn to log it clearly…"}
             className="h-10 flex-1 rounded-2xl border border-white/10 bg-white/5 px-3.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/20"
           />
           <button
