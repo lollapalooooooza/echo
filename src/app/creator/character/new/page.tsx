@@ -20,6 +20,24 @@ const sourceTypeBadge: Record<string, { label: string; color: string }> = {
   WEBSITE: { label: "Website", color: "bg-purple-50 text-purple-700" },
 };
 
+async function readResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return {
+    error:
+      text
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 200) || `Request failed with status ${response.status}`,
+  };
+}
+
 export default function NewCharacterPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -42,13 +60,20 @@ export default function NewCharacterPage() {
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true);
     try {
-      const fd = new FormData(); fd.append("avatar", file);
+      const fd = new FormData();
+      fd.append("avatar", file);
       const res = await fetch("/api/upload/avatar", { method: "POST", body: fd });
-      if (!res.ok) { const e = await res.json(); alert(e.error || "Upload failed"); return; }
-      const { avatarUrl } = await res.json();
+      const data = await readResponse(res);
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      if (!data.avatarUrl) throw new Error("Upload failed");
+
+      const avatarUrl = data.avatarUrl as string;
       set("avatarUrl", avatarUrl);
-    } catch (e: any) { alert(e.message); }
-    finally { setUploadingAvatar(false); }
+    } catch (e: any) {
+      alert(e.message || "Upload failed");
+    } finally {
+      setUploadingAvatar(false);
+    }
   };
 
   const handleAvatarDrop = (e: React.DragEvent) => {
@@ -106,8 +131,13 @@ export default function NewCharacterPage() {
           allowedDomains: form.allowedDomains.filter(Boolean),
         }),
       });
-      if (!res.ok) { const e = await res.json(); alert(e.error || "Failed"); setSaving(false); return; }
-      const char = await res.json();
+      const data = await readResponse(res);
+      if (!res.ok) {
+        alert(data.error || "Failed");
+        setSaving(false);
+        return;
+      }
+      const char = data;
 
       if (char.avatarUrl) {
         setGeneratingVideo(true);
@@ -116,7 +146,7 @@ export default function NewCharacterPage() {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ characterId: char.id, action: "both" }),
           });
-          const videoData = await videoRes.json().catch(() => null);
+          const videoData = await readResponse(videoRes);
           if (!videoRes.ok) console.warn("Video generation failed:", videoData?.error || `API ${videoRes.status}`);
         } catch (e) { console.warn("Video generation failed:", e); }
         setGeneratingVideo(false);

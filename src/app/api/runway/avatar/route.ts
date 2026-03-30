@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getRunwayAvatar } from "@/services/runwayAvatar";
+import { createRunwayAvatar, getRunwayAvatar } from "@/services/runwayAvatar";
 
 export const dynamic = "force-dynamic";
 
@@ -45,5 +45,56 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ avatar });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to load Runway avatar" }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  const userId = (session?.user as any)?.id as string | undefined;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json().catch(() => null);
+  const characterId = body?.characterId as string | undefined;
+  if (!characterId) {
+    return NextResponse.json({ error: "characterId required" }, { status: 400 });
+  }
+
+  const character = await db.character.findUnique({ where: { id: characterId } });
+  if (!character || character.userId !== userId) {
+    return NextResponse.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  if (!character.avatarUrl?.trim()) {
+    return NextResponse.json({ error: "Upload a character image before generating a Runway avatar" }, { status: 400 });
+  }
+
+  try {
+    const avatar = await createRunwayAvatar({
+      name: character.name,
+      bio: character.bio,
+      greeting: character.greeting,
+      personalityTone: character.personalityTone,
+      avatarUrl: character.avatarUrl.trim(),
+    });
+
+    const runwayCharacterId = (avatar as any)?.id as string | undefined;
+    if (!runwayCharacterId) {
+      throw new Error("Runway did not return an avatar ID");
+    }
+
+    await db.character.update({
+      where: { id: character.id },
+      data: {
+        runwayCharacterId,
+        runwaySessionId: null,
+      },
+    });
+
+    return NextResponse.json({ avatar, runwayCharacterId });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || "Failed to generate Runway avatar" }, { status: 500 });
   }
 }

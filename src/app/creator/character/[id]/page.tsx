@@ -1,14 +1,66 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Loader2, Video, Copy, Check, ExternalLink, Code, Play, Camera, X } from "lucide-react";
+import {
+  BookOpen,
+  Camera,
+  Check,
+  Code,
+  Copy,
+  ExternalLink,
+  FileText,
+  Globe,
+  Loader2,
+  Play,
+  RefreshCw,
+  Save,
+  Type,
+  Video,
+  X,
+} from "lucide-react";
+
 import { cn } from "@/lib/utils";
+
+const sourceTypeIcon: Record<string, any> = {
+  URL: Globe,
+  UPLOAD: FileText,
+  TEXT: Type,
+  WEBSITE: Globe,
+};
+
+const sourceTypeBadge: Record<string, { label: string; color: string }> = {
+  URL: { label: "URL", color: "bg-blue-50 text-blue-700" },
+  UPLOAD: { label: "File", color: "bg-amber-50 text-amber-700" },
+  TEXT: { label: "Text", color: "bg-emerald-50 text-emerald-700" },
+  WEBSITE: { label: "Website", color: "bg-purple-50 text-purple-700" },
+};
+
+async function readResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return {
+    error:
+      text
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 200) || `Request failed with status ${response.status}`,
+  };
+}
 
 export default function EditCharacterPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [char, setChar] = useState<any>(null);
+  const [knowledgeSources, setKnowledgeSources] = useState<any[]>([]);
+  const [loadingKnowledge, setLoadingKnowledge] = useState(true);
   const [runwayAvatar, setRunwayAvatar] = useState<any>(null);
   const [runwayAvatarLoading, setRunwayAvatarLoading] = useState(false);
+  const [regeneratingRunwayAvatar, setRegeneratingRunwayAvatar] = useState(false);
   const [runwayAvatarError, setRunwayAvatarError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -21,25 +73,84 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true);
     try {
-      const fd = new FormData(); fd.append("avatar", file);
+      const fd = new FormData();
+      fd.append("avatar", file);
       const res = await fetch("/api/upload/avatar", { method: "POST", body: fd });
-      if (!res.ok) { const e = await res.json(); alert(e.error || "Upload failed"); return; }
-      const { avatarUrl } = await res.json();
+      const data = await readResponse(res);
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      if (!data.avatarUrl) throw new Error("Upload failed");
+
+      const avatarUrl = data.avatarUrl as string;
       setChar((p: any) => ({ ...p, avatarUrl }));
-    } catch (e: any) { alert(e.message); }
-    finally { setUploadingAvatar(false); }
+    } catch (e: any) {
+      alert(e.message || "Upload failed");
+    } finally {
+      setUploadingAvatar(false);
+    }
   };
+
   const handleAvatarDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setAvatarDrag(false);
+    e.preventDefault();
+    setAvatarDrag(false);
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith("image/")) uploadAvatar(file);
   };
 
   useEffect(() => {
-    fetch("/api/characters?mine=true").then(r => r.json()).then(chars => {
-      const c = (Array.isArray(chars) ? chars : []).find((x: any) => x.id === params.id);
-      if (c) setChar(c); else router.push("/creator/character");
-    }).finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const [charactersRes, sourcesRes] = await Promise.all([
+          fetch("/api/characters?mine=true", { cache: "no-store" }),
+          fetch("/api/knowledge/sources", { cache: "no-store" }),
+        ]);
+
+        const [charactersData, sourcesData] = await Promise.all([
+          readResponse(charactersRes),
+          readResponse(sourcesRes),
+        ]);
+
+        if (!charactersRes.ok) {
+          throw new Error(charactersData.error || "Failed to load characters");
+        }
+
+        const current = (Array.isArray(charactersData) ? charactersData : []).find((item: any) => item.id === params.id);
+        if (!current) {
+          router.push("/creator/character");
+          return;
+        }
+
+        if (cancelled) return;
+
+        setChar({
+          ...current,
+          knowledgeSourceIds: current.knowledgeSources?.map((link: any) => link.source.id) || [],
+        });
+
+        if (sourcesRes.ok) {
+          const sources = Array.isArray(sourcesData) ? sourcesData : sourcesData.sources || [];
+          setKnowledgeSources(sources.filter((source: any) => source.status === "INDEXED"));
+        } else {
+          console.error("[EditCharacter] Failed to load knowledge sources:", sourcesData.error);
+          setKnowledgeSources([]);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          alert(e.message || "Failed to load character");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingKnowledge(false);
+        }
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [params.id, router]);
 
   const refreshRunwayAvatar = async (characterId: string) => {
@@ -47,7 +158,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
     setRunwayAvatarError("");
     try {
       const res = await fetch(`/api/runway/avatar?characterId=${encodeURIComponent(characterId)}`, { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
+      const data = await readResponse(res);
       if (!res.ok) throw new Error(data.error || "Failed to load Runway avatar");
       setRunwayAvatar(data.avatar || null);
     } catch (e: any) {
@@ -67,23 +178,93 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
     refreshRunwayAvatar(char.id);
   }, [char?.id, char?.runwayCharacterId]);
 
+  const regenerateRunwayAvatar = async () => {
+    if (!char?.id) return;
+
+    setRegeneratingRunwayAvatar(true);
+    setRunwayAvatarError("");
+    try {
+      const res = await fetch("/api/runway/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ characterId: char.id }),
+      });
+      const data = await readResponse(res);
+      if (!res.ok) throw new Error(data.error || "Failed to generate Runway avatar");
+
+      setRunwayAvatar(data.avatar || null);
+      setChar((prev: any) => ({
+        ...prev,
+        runwayCharacterId: data.runwayCharacterId || prev.runwayCharacterId,
+      }));
+    } catch (e: any) {
+      setRunwayAvatarError(e.message || "Failed to generate Runway avatar");
+    } finally {
+      setRegeneratingRunwayAvatar(false);
+    }
+  };
+
+  const toggleSource = (sourceId: string) => {
+    setChar((prev: any) => {
+      const ids = prev.knowledgeSourceIds || [];
+      return {
+        ...prev,
+        knowledgeSourceIds: ids.includes(sourceId) ? ids.filter((id: string) => id !== sourceId) : [...ids, sourceId],
+      };
+    });
+  };
+
+  const toggleAllSources = () => {
+    setChar((prev: any) => {
+      const ids = prev.knowledgeSourceIds || [];
+      const allSelected = knowledgeSources.length > 0 && ids.length === knowledgeSources.length;
+      return {
+        ...prev,
+        knowledgeSourceIds: allSelected ? [] : knowledgeSources.map((source) => source.id),
+      };
+    });
+  };
+
   const save = async () => {
+    if (!char) return;
     setSaving(true);
-    await fetch("/api/characters", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(char) });
-    setSaving(false);
+    try {
+      const res = await fetch("/api/characters", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(char),
+      });
+      const data = await readResponse(res);
+      if (!res.ok) throw new Error(data.error || "Failed to save character");
+    } catch (e: any) {
+      alert(e.message || "Failed to save character");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const togglePublish = async () => {
     const newStatus = char.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
     setChar((p: any) => ({ ...p, status: newStatus }));
-    await fetch("/api/characters", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: char.id, status: newStatus }) });
+    try {
+      const res = await fetch("/api/characters", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: char.id, status: newStatus }),
+      });
+      const data = await readResponse(res);
+      if (!res.ok) throw new Error(data.error || "Failed to update status");
+    } catch (e: any) {
+      setChar((p: any) => ({ ...p, status: char.status }));
+      alert(e.message || "Failed to update status");
+    }
   };
 
   const generateVideo = async (action: string) => {
     setGenVideo(true);
     try {
       const res = await fetch("/api/video/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ characterId: char.id, action }) });
-      const data = await res.json().catch(() => ({}));
+      const data = await readResponse(res);
       if (!res.ok) throw new Error(data.error || "Video generation failed");
       if (data.error) alert(data.error);
       setChar((p: any) => ({
@@ -105,6 +286,12 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
   const appUrl = typeof window !== "undefined" ? window.location.origin : "https://your-echo-domain.com";
   const scriptSnippet = `<script src="${appUrl}/widget.js" data-character-id="${char.id}" data-position="${char.widgetPosition || "bottom-right"}" async></script>`;
   const iframeSnippet = `<iframe src="${appUrl}/embed/${char.id}" width="400" height="600" style="border:none;border-radius:16px" allow="microphone"></iframe>`;
+  const selectedKnowledgeCount = char.knowledgeSourceIds?.length || 0;
+  const allKnowledgeSelected = knowledgeSources.length > 0 && selectedKnowledgeCount === knowledgeSources.length;
+  const runwayAvatarStatus = typeof runwayAvatar?.status === "string" ? runwayAvatar.status.toUpperCase() : "";
+  const canGenerateRunwayAvatar = !!char.avatarUrl;
+  const showRunwayGenerateButton = canGenerateRunwayAvatar && (!char.runwayCharacterId || runwayAvatarStatus === "FAILED");
+  const liveSessionDisabled = !char.runwayCharacterId || runwayAvatarStatus === "FAILED";
 
   return (
     <div className="space-y-6">
@@ -156,6 +343,80 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
             <div><label className="mb-1 block text-[13px] font-medium">Greeting</label><textarea value={char.greeting} onChange={e => setChar((p: any) => ({ ...p, greeting: e.target.value }))} rows={3} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" /></div>
           </div>
 
+          <div className="rounded-xl border border-border bg-white p-5 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold flex items-center gap-2"><BookOpen className="h-4 w-4" /> Character Knowledge</h3>
+                <p className="mt-1 text-[13px] text-muted-foreground">Add or remove indexed sources for this character. No sources selected means the character can use all of your knowledge.</p>
+              </div>
+              <a href="/creator/knowledge" className="text-[12px] font-medium text-foreground underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-500">
+                Manage library
+              </a>
+            </div>
+
+            {loadingKnowledge ? (
+              <div className="py-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : knowledgeSources.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border py-8 text-center">
+                <BookOpen className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
+                <p className="text-[13px] text-muted-foreground">No indexed knowledge sources yet.</p>
+                <a href="/creator/knowledge" className="text-[13px] font-medium text-foreground underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-500">
+                  Add content first
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  onClick={toggleAllSources}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                    allKnowledgeSelected ? "border-foreground bg-foreground/5" : "border-border hover:border-foreground/30"
+                  )}
+                >
+                  <div className={cn("flex h-5 w-5 items-center justify-center rounded border transition-colors", allKnowledgeSelected ? "border-foreground bg-foreground text-white" : "border-border")}>
+                    {allKnowledgeSelected && <Check className="h-3 w-3" />}
+                  </div>
+                  <span className="text-[13px] font-medium">{allKnowledgeSelected ? "Deselect all" : "Select all"} ({knowledgeSources.length} sources)</span>
+                </button>
+
+                <div className="max-h-64 overflow-y-auto space-y-1.5 rounded-xl border border-border p-2">
+                  {knowledgeSources.map((source: any) => {
+                    const Icon = sourceTypeIcon[source.type] || FileText;
+                    const badge = sourceTypeBadge[source.type] || sourceTypeBadge.TEXT;
+                    const isSelected = char.knowledgeSourceIds?.includes(source.id);
+
+                    return (
+                      <button
+                        key={source.id}
+                        onClick={() => toggleSource(source.id)}
+                        className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors", isSelected ? "bg-foreground/5" : "hover:bg-muted/30")}
+                      >
+                        <div className={cn("flex h-4.5 w-4.5 items-center justify-center rounded border transition-colors", isSelected ? "border-foreground bg-foreground text-white" : "border-border")}>
+                          {isSelected && <Check className="h-3 w-3" />}
+                        </div>
+                        <Icon className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-medium truncate">{source.title}</p>
+                          <div className="mt-0.5 flex items-center gap-2">
+                            <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium", badge.color)}>{badge.label}</span>
+                            {source.topic && <span className="text-[10px] text-muted-foreground">{source.topic}</span>}
+                            <span className="text-[10px] text-muted-foreground">{source.chunkCount} chunks</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-[11px] text-muted-foreground">
+                  {selectedKnowledgeCount > 0
+                    ? `${selectedKnowledgeCount} source${selectedKnowledgeCount !== 1 ? "s" : ""} selected`
+                    : "No sources selected — character will use all your knowledge"}
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Runway Video */}
           <div className="rounded-xl border border-border bg-white p-5 space-y-3">
             <h3 className="text-sm font-semibold flex items-center gap-2"><Video className="h-4 w-4" /> Runway Video Character</h3>
@@ -191,12 +452,20 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
             </div>
             <div className="flex gap-2">
               <button onClick={() => char.id && refreshRunwayAvatar(char.id)} disabled={runwayAvatarLoading || !char.runwayCharacterId} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
-                {runwayAvatarLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />} Refresh status
+                {runwayAvatarLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh status
               </button>
-              <a href={`/room/${char.slug}`} target="_blank" className={cn("flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-white hover:opacity-80", !char.runwayCharacterId && "pointer-events-none opacity-50")}>
+              {showRunwayGenerateButton && (
+                <button onClick={regenerateRunwayAvatar} disabled={regeneratingRunwayAvatar} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
+                  {regeneratingRunwayAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                  {runwayAvatarStatus === "FAILED" ? "Regenerate avatar" : "Generate avatar"}
+                </button>
+              )}
+              <a href={`/room/${char.slug}`} target="_blank" className={cn("flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-white hover:opacity-80", liveSessionDisabled && "pointer-events-none opacity-50")}>
                 <Play className="h-3.5 w-3.5" /> Live session test
               </a>
             </div>
+            {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload a character image to generate a Runway avatar.</p>}
+            {runwayAvatarStatus === "FAILED" && <p className="text-[11px] text-amber-600">Runway marked this avatar as failed. Regenerate it to restore live sessions.</p>}
           </div>
         </div>
 

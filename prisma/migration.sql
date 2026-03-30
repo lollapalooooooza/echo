@@ -31,6 +31,18 @@ ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3);
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 CREATE UNIQUE INDEX IF NOT EXISTS "User_username_key" ON "User"("username");
 
+CREATE TABLE IF NOT EXISTS "UploadedAsset" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "userId" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "contentType" TEXT NOT NULL,
+  "data" BYTEA NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "UploadedAsset_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "UploadedAsset_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "UploadedAsset_userId_kind_idx" ON "UploadedAsset"("userId", "kind");
+
 CREATE TABLE IF NOT EXISTS "Account" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
   "userId" TEXT NOT NULL,

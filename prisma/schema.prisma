@@ -49,22 +49,35 @@ model VerificationToken {
 // ── User ────────────────────────────────────────────────────
 
 model User {
-  id            String      @id @default(cuid())
-  name          String?
-  username      String?     @unique
-  bio           String?     @db.Text
-  email         String?     @unique
-  emailVerified DateTime?
-  image         String?
-  lastLoginAt   DateTime?
-  accounts      Account[]
-  sessions      Session[]
-  sources       KnowledgeSource[]
-  characters    Character[]
-  voices        Voice[]
-  usageRecords  UsageRecord[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @default(now()) @updatedAt
+  id             String            @id @default(cuid())
+  name           String?
+  username       String?           @unique
+  bio            String?           @db.Text
+  email          String?           @unique
+  emailVerified  DateTime?
+  image          String?
+  lastLoginAt    DateTime?
+  accounts       Account[]
+  sessions       Session[]
+  sources        KnowledgeSource[]
+  characters     Character[]
+  voices         Voice[]
+  usageRecords   UsageRecord[]
+  uploadedAssets UploadedAsset[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @default(now()) @updatedAt
+}
+
+model UploadedAsset {
+  id          String   @id @default(cuid())
+  userId      String
+  kind        String
+  contentType String
+  data        Bytes
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
 }
 
 // ── Knowledge Layer ─────────────────────────────────────────
@@ -85,40 +98,40 @@ enum SourceStatus {
 }
 
 model KnowledgeSource {
-  id          String       @id @default(cuid())
-  userId      String
-  type        SourceType
-  title       String
-  sourceUrl   String?
-  fileName    String?
-  rawContent  String?      @db.Text
-  cleanedText String?      @db.Text
-  summary     String?      @db.Text
-  status      SourceStatus @default(PENDING)
-  errorMsg    String?
-  chunkCount  Int          @default(0)
-  publishDate DateTime?
-  headings    Json?
-  topic       String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chunks      ContentChunk[]
+  id               String                     @id @default(cuid())
+  userId           String
+  type             SourceType
+  title            String
+  sourceUrl        String?
+  fileName         String?
+  rawContent       String?                    @db.Text
+  cleanedText      String?                    @db.Text
+  summary          String?                    @db.Text
+  status           SourceStatus               @default(PENDING)
+  errorMsg         String?
+  chunkCount       Int                        @default(0)
+  publishDate      DateTime?
+  headings         Json?
+  topic            String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  user             User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks           ContentChunk[]
   characterSources CharacterKnowledgeSource[]
 
   @@index([userId, status])
 }
 
 model ContentChunk {
-  id         String                          @id @default(cuid())
+  id         String                       @id @default(cuid())
   sourceId   String
   chunkIndex Int
-  content    String                          @db.Text
+  content    String                       @db.Text
   heading    String?
-  tokenCount Int                             @default(0)
+  tokenCount Int                          @default(0)
   embedding  Unsupported("vector(1536)")?
-  createdAt  DateTime                        @default(now())
-  source     KnowledgeSource                 @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  createdAt  DateTime                     @default(now())
+  source     KnowledgeSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@index([sourceId])
 }
@@ -126,15 +139,15 @@ model ContentChunk {
 // ── Voice Layer ─────────────────────────────────────────────
 
 model Voice {
-  id              String      @id @default(cuid())
-  userId          String
-  name            String
+  id                String      @id @default(cuid())
+  userId            String
+  name              String
   elevenLabsVoiceId String
-  isCloned        Boolean     @default(false)
-  isDefault       Boolean     @default(false)
-  createdAt       DateTime    @default(now())
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  characters      Character[]
+  isCloned          Boolean     @default(false)
+  isDefault         Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characters        Character[]
 
   @@index([userId])
 }
@@ -169,8 +182,8 @@ model Character {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  voice            Voice?         @relation(fields: [voiceId], references: [id])
+  user             User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voice            Voice?                     @relation(fields: [voiceId], references: [id])
   conversations    Conversation[]
   analytics        AnalyticsDaily[]
   knowledgeSources CharacterKnowledgeSource[]
@@ -201,13 +214,13 @@ enum MessageRole {
 }
 
 model Message {
-  id             String      @id @default(cuid())
+  id             String       @id @default(cuid())
   conversationId String
   role           MessageRole
-  content        String      @db.Text
+  content        String       @db.Text
   sourcesJson    Json?
-  audioGenerated Boolean     @default(false)
-  createdAt      DateTime    @default(now())
+  audioGenerated Boolean      @default(false)
+  createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
@@ -216,12 +229,12 @@ model Message {
 // ── Analytics ───────────────────────────────────────────────
 
 model AnalyticsDaily {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   characterId     String
-  date            DateTime @db.Date
-  conversations   Int      @default(0)
-  messages        Int      @default(0)
-  unansweredCount Int      @default(0)
+  date            DateTime  @db.Date
+  conversations   Int       @default(0)
+  messages        Int       @default(0)
+  unansweredCount Int       @default(0)
   character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
   @@unique([characterId, date])
