@@ -157,6 +157,66 @@ export type WebsiteCrawlProgressEvent =
       errors: number;
     };
 
+const WEBSITE_CRAWL_CONCURRENCY = 4;
+
+class AsyncEventQueue<T> implements AsyncIterable<T> {
+  private items: T[] = [];
+  private resolvers: Array<{
+    resolve: (result: IteratorResult<T>) => void;
+    reject: (error: Error) => void;
+  }> = [];
+  private closed = false;
+  private error: Error | null = null;
+
+  push(item: T) {
+    if (this.closed || this.error) return;
+
+    const pending = this.resolvers.shift();
+    if (pending) {
+      pending.resolve({ value: item, done: false });
+      return;
+    }
+
+    this.items.push(item);
+  }
+
+  fail(error: Error) {
+    this.error = error;
+    while (this.resolvers.length > 0) {
+      this.resolvers.shift()?.reject(error);
+    }
+  }
+
+  close() {
+    this.closed = true;
+    while (this.resolvers.length > 0) {
+      this.resolvers.shift()?.resolve({ value: undefined as T, done: true });
+    }
+  }
+
+  [Symbol.asyncIterator]() {
+    return {
+      next: (): Promise<IteratorResult<T>> => {
+        if (this.items.length > 0) {
+          return Promise.resolve({ value: this.items.shift()!, done: false });
+        }
+
+        if (this.error) {
+          return Promise.reject(this.error);
+        }
+
+        if (this.closed) {
+          return Promise.resolve({ value: undefined as T, done: true });
+        }
+
+        return new Promise<IteratorResult<T>>((resolve, reject) => {
+          this.resolvers.push({ resolve, reject });
+        });
+      },
+    };
+  }
+}
+
 export async function ingestUrl(url: string, userId: string): Promise<string> {
   console.log(`[Ingest] Starting URL: ${url}`);
   const source = await db.knowledgeSource.create({
@@ -242,163 +302,191 @@ export async function ingestText(title: string, text: string, userId: string): P
   }
 }
 
-export async function* ingestWebsiteWithProgress(
+export function ingestWebsiteWithProgress(
   baseUrl: string,
   userId: string,
   options: { maxPages?: number } = {}
-): AsyncGenerator<WebsiteCrawlProgressEvent> {
-  console.log(`[Ingest] Starting website crawl: ${baseUrl}`);
+): AsyncIterable<WebsiteCrawlProgressEvent> {
+  const events = new AsyncEventQueue<WebsiteCrawlProgressEvent>();
 
-  const maxPages = Math.min(options.maxPages || 20, 20);
-  const discoveryLimit = Math.max(maxPages * 6, 120);
-  const normalizedBaseUrl = normalizeCrawlUrl(baseUrl);
-  const discoveredUrls = Array.from(
-    new Set(
-      (await discoverPages(normalizedBaseUrl, discoveryLimit))
-        .map((url) => normalizeCrawlUrl(url))
-        .filter((url) => isSameCrawlDomain(url, normalizedBaseUrl))
-    )
-  );
-
-  const existingSources = await db.knowledgeSource.findMany({
-    where: {
-      userId,
-      type: { in: ["WEBSITE", "URL"] },
-      sourceUrl: { not: null },
-    },
-    select: { sourceUrl: true, status: true },
-  });
-
-  const existingUrls = new Set(
-    existingSources
-      .filter((source) => source.status === "INDEXED")
-      .map((source) => source.sourceUrl)
-      .filter((sourceUrl): sourceUrl is string => !!sourceUrl && isSameCrawlDomain(sourceUrl, normalizedBaseUrl))
-      .map((sourceUrl) => normalizeCrawlUrl(sourceUrl))
-  );
-
-  const newUrls = discoveredUrls.filter((url) => !existingUrls.has(url));
-  const queuedUrls = newUrls.slice(0, maxPages);
-  const skippedExisting = discoveredUrls.length - newUrls.length;
-  let remaining = Math.max(newUrls.length - queuedUrls.length, 0);
-
-  yield {
-    type: "discovered",
-    baseUrl: normalizedBaseUrl,
-    totalDiscovered: discoveredUrls.length,
-    queued: queuedUrls.length,
-    skippedExisting,
-    remaining,
-    limit: maxPages,
-  };
-
-  let processed = 0;
-  let indexed = 0;
-  let errors = 0;
-
-  for (const url of queuedUrls) {
-    const source = await db.knowledgeSource.create({
-      data: {
-        userId,
-        type: "WEBSITE",
-        title: url,
-        sourceUrl: url,
-        status: "CRAWLING",
-      },
-    });
-
-    yield {
-      type: "page",
-      phase: "reading",
-      url,
-      processed,
-      total: queuedUrls.length,
-      indexed,
-      errors,
-      remaining,
-    };
-
+  void (async () => {
     try {
-      const result = await scrapeUrl(url, { mode: "stealth" });
-      const summaryMeta = await summarizeKnowledgeSource({
-        title: result.title,
-        text: result.content,
-        sourceUrl: result.url,
-        type: "WEBSITE",
-      });
-      const topic = summaryMeta.topic || detectTopic(result.content, result.title);
+      console.log(`[Ingest] Starting website crawl: ${baseUrl}`);
 
-      await db.knowledgeSource.update({
-        where: { id: source.id },
-        data: {
-          title: summaryMeta.title || result.title,
-          cleanedText: result.content,
-          summary: summaryMeta.summary,
-          publishDate: result.publishDate ? new Date(result.publishDate) : null,
-          headings: result.headings as any,
-          topic,
-          status: "PROCESSING",
-        } as any,
-      });
+      const maxPages = Math.min(options.maxPages || 20, 20);
+      const discoveryLimit = Math.max(maxPages * 6, 120);
+      const normalizedBaseUrl = normalizeCrawlUrl(baseUrl);
+      const discoveredUrls = Array.from(
+        new Set(
+          (await discoverPages(normalizedBaseUrl, discoveryLimit))
+            .map((url) => normalizeCrawlUrl(url))
+            .filter((url) => isSameCrawlDomain(url, normalizedBaseUrl))
+        )
+      );
 
-      const chunkCount = await processAndStoreChunks(source.id, result.content);
-      await db.knowledgeSource.update({
-        where: { id: source.id },
-        data: { status: "INDEXED", chunkCount },
-      });
-
-      indexed++;
-      processed++;
-
-      yield {
-        type: "page",
-        phase: "indexed",
-        url,
-        title: summaryMeta.title || result.title,
-        processed,
-        total: queuedUrls.length,
-        indexed,
-        errors,
-        remaining,
-      };
-    } catch (err: any) {
-      processed++;
-      errors++;
-      console.error(`[Ingest] Failed to process ${url}: ${err.message}`);
-
-      await db.knowledgeSource.update({
-        where: { id: source.id },
-        data: {
-          status: "ERROR",
-          errorMsg: err.message,
+      const existingSources = await db.knowledgeSource.findMany({
+        where: {
+          userId,
+          type: { in: ["WEBSITE", "URL"] },
+          sourceUrl: { not: null },
         },
+        select: { sourceUrl: true, status: true },
       });
 
-      yield {
-        type: "page",
-        phase: "error",
-        url,
+      const existingUrls = new Set(
+        existingSources
+          .filter((source) => source.status === "INDEXED")
+          .map((source) => source.sourceUrl)
+          .filter((sourceUrl): sourceUrl is string => !!sourceUrl && isSameCrawlDomain(sourceUrl, normalizedBaseUrl))
+          .map((sourceUrl) => normalizeCrawlUrl(sourceUrl))
+      );
+
+      const newUrls = discoveredUrls.filter((url) => !existingUrls.has(url));
+      const queuedUrls = newUrls.slice(0, maxPages);
+      const skippedExisting = discoveredUrls.length - newUrls.length;
+      const remaining = Math.max(newUrls.length - queuedUrls.length, 0);
+
+      events.push({
+        type: "discovered",
+        baseUrl: normalizedBaseUrl,
+        totalDiscovered: discoveredUrls.length,
+        queued: queuedUrls.length,
+        skippedExisting,
+        remaining,
+        limit: maxPages,
+      });
+
+      let processed = 0;
+      let indexed = 0;
+      let errors = 0;
+      const queue = [...queuedUrls];
+
+      const worker = async () => {
+        while (queue.length > 0) {
+          const url = queue.shift();
+          if (!url) return;
+
+          const source = await db.knowledgeSource.create({
+            data: {
+              userId,
+              type: "WEBSITE",
+              title: url,
+              sourceUrl: url,
+              status: "CRAWLING",
+            },
+          });
+
+          events.push({
+            type: "page",
+            phase: "reading",
+            url,
+            processed,
+            total: queuedUrls.length,
+            indexed,
+            errors,
+            remaining,
+          });
+
+          try {
+            const result = await scrapeUrl(url, { mode: "stealth" });
+            const heuristic = detectTopic(result.content, result.title);
+
+            await db.knowledgeSource.update({
+              where: { id: source.id },
+              data: {
+                title: result.title,
+                cleanedText: result.content,
+                publishDate: result.publishDate ? new Date(result.publishDate) : null,
+                headings: result.headings as any,
+                topic: heuristic,
+                status: "PROCESSING",
+              } as any,
+            });
+
+            const [summaryMeta, chunkCount] = await Promise.all([
+              summarizeKnowledgeSource({
+                title: result.title,
+                text: result.content,
+                sourceUrl: result.url,
+                type: "WEBSITE",
+              }),
+              processAndStoreChunks(source.id, result.content),
+            ]);
+
+            await db.knowledgeSource.update({
+              where: { id: source.id },
+              data: {
+                title: summaryMeta.title || result.title,
+                summary: summaryMeta.summary,
+                topic: summaryMeta.topic || heuristic,
+                status: "INDEXED",
+                chunkCount,
+              },
+            });
+
+            indexed++;
+            processed++;
+
+            events.push({
+              type: "page",
+              phase: "indexed",
+              url,
+              title: summaryMeta.title || result.title,
+              processed,
+              total: queuedUrls.length,
+              indexed,
+              errors,
+              remaining,
+            });
+          } catch (err: any) {
+            processed++;
+            errors++;
+            console.error(`[Ingest] Failed to process ${url}: ${err.message}`);
+
+            await db.knowledgeSource.update({
+              where: { id: source.id },
+              data: {
+                status: "ERROR",
+                errorMsg: err.message,
+              },
+            });
+
+            events.push({
+              type: "page",
+              phase: "error",
+              url,
+              processed,
+              total: queuedUrls.length,
+              indexed,
+              errors,
+              remaining,
+              error: err.message,
+            });
+          }
+        }
+      };
+
+      const concurrency = Math.min(WEBSITE_CRAWL_CONCURRENCY, Math.max(queuedUrls.length, 1));
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+      events.push({
+        type: "done",
+        baseUrl: normalizedBaseUrl,
+        totalDiscovered: discoveredUrls.length,
+        queued: queuedUrls.length,
+        skippedExisting,
+        remaining,
         processed,
-        total: queuedUrls.length,
         indexed,
         errors,
-        remaining,
-        error: err.message,
-      };
+      });
+      events.close();
+    } catch (err: any) {
+      events.fail(err instanceof Error ? err : new Error(err?.message || "Website crawl failed"));
     }
-  }
+  })();
 
-  yield {
-    type: "done",
-    baseUrl: normalizedBaseUrl,
-    totalDiscovered: discoveredUrls.length,
-    queued: queuedUrls.length,
-    skippedExisting,
-    remaining,
-    processed,
-    indexed,
-    errors,
-  };
+  return events;
 }
 
 export async function ingestWebsite(baseUrl: string, userId: string, options: { maxPages?: number } = {}) {

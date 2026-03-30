@@ -24,10 +24,12 @@ export async function storeEmbeddings(chunks: { id: string; content: string }[])
   if (chunks.length === 0) return;
   console.log(`[Embed] Embedding ${chunks.length} chunks…`);
   const embeddings = await embedBatch(chunks.map((c) => c.content));
-  for (let i = 0; i < chunks.length; i++) {
-    const vecStr = `[${embeddings[i].join(",")}]`;
-    await db.$executeRawUnsafe(`UPDATE "ContentChunk" SET embedding = $1::vector WHERE id = $2`, vecStr, chunks[i].id);
-  }
+  await Promise.all(
+    chunks.map((chunk, index) => {
+      const vecStr = `[${embeddings[index].join(",")}]`;
+      return db.$executeRawUnsafe(`UPDATE "ContentChunk" SET embedding = $1::vector WHERE id = $2`, vecStr, chunk.id);
+    })
+  );
   console.log(`[Embed] ✓ Stored ${chunks.length} embeddings`);
 }
 
