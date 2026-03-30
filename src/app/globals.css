@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', -apple-system, sans-serif;
+    --font-display: 'Newsreader', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 97%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.5%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96.5%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 91%;
+    --input: 0 0% 91%;
+    --ring: 0 0% 9%;
+    --radius: 0.75rem;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(0 0% 85%); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(0 0% 75%); }
+
+/* ── Voice Visualizer ───────────────────────────────────────── */
+
+.voice-bar {
+  @apply w-[3px] rounded-full bg-foreground/70;
+  animation: voice-wave 0.8s ease-in-out infinite;
+}
+
+/* ── Live Status Dot ────────────────────────────────────────── */
+
+.live-dot {
+  @apply relative h-2 w-2 rounded-full bg-emerald-500;
+}
+.live-dot::after {
+  content: '';
+  @apply absolute inset-0 rounded-full bg-emerald-500;
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* ── Room Backdrop ──────────────────────────────────────────── */
+
+.room-backdrop {
+  background: radial-gradient(ellipse at 50% 30%, hsl(0 0% 10%) 0%, hsl(0 0% 3%) 100%);
+}
+
+/* ── Article Citation Card ──────────────────────────────────── */
+
+.article-card {
+  @apply rounded-xl border border-white/10 bg-white/5 overflow-hidden;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+.article-card:hover {
+  @apply border-white/20 bg-white/[0.07];
+}
+
+/* ── Section Card (Creator Dashboard) ─────────────────────── */
+
+.section-card {
+  @apply rounded-2xl border border-border/60 bg-white shadow-sm;
+}
+.section-card > .section-header {
+  @apply border-b border-border/40 px-5 py-3.5;
+}
+
+/* ── Character Lobby Card ───────────────────────────────────── */
+
+.lobby-card {
+  @apply relative flex flex-col rounded-2xl border border-border/50 bg-white overflow-hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.lobby-card:hover {
+  @apply shadow-lg shadow-neutral-200/60;
+  transform: translateY(-2px);
+}
+
+/* ── Notion-Style Input ─────────────────────────────────────── */
+
+.notion-input {
+  @apply h-9 w-full rounded-xl border border-border/60 bg-white px-3 text-sm outline-none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.notion-input:focus {
+  @apply border-neutral-400;
+  box-shadow: 0 0 0 3px hsl(0 0% 96%);
+}
+
+/* ── Notion-Style Button ────────────────────────────────────── */
+
+.btn-primary {
+  @apply inline-flex h-9 items-center gap-1.5 rounded-lg bg-foreground px-4 text-[13px] font-medium text-white;
+  transition: opacity 0.15s ease;
+}
+.btn-primary:hover { @apply opacity-80; }
+.btn-primary:disabled { @apply opacity-50; }
+
+.btn-secondary {
+  @apply inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-4 text-[13px] font-medium;
+  transition: all 0.15s ease;
+}
+.btn-secondary:hover { @apply bg-muted/40; }
+
+/* ── Animations ─────────────────────────────────────────────── */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes voice-wave {
+  0%, 100% { height: 8px; }
+  50% { height: 24px; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in { animation: fade-in 0.3s ease-out; }
+.animate-slide-up { animation: slide-up 0.4s ease-out; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, hsl(0 0% 95%) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}

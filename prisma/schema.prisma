@@ -1,0 +1,254 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector, pgcrypto]
+}
+
+// ── NextAuth Models ─────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── User ────────────────────────────────────────────────────
+
+model User {
+  id            String      @id @default(cuid())
+  name          String?
+  email         String?     @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  sources       KnowledgeSource[]
+  characters    Character[]
+  voices        Voice[]
+  usageRecords  UsageRecord[]
+  createdAt     DateTime    @default(now())
+}
+
+// ── Knowledge Layer ─────────────────────────────────────────
+
+enum SourceType {
+  URL
+  UPLOAD
+  TEXT
+  WEBSITE
+}
+
+enum SourceStatus {
+  PENDING
+  CRAWLING
+  PROCESSING
+  INDEXED
+  ERROR
+}
+
+model KnowledgeSource {
+  id          String       @id @default(cuid())
+  userId      String
+  type        SourceType
+  title       String
+  sourceUrl   String?
+  fileName    String?
+  rawContent  String?      @db.Text
+  cleanedText String?      @db.Text
+  summary     String?      @db.Text
+  status      SourceStatus @default(PENDING)
+  errorMsg    String?
+  chunkCount  Int          @default(0)
+  publishDate DateTime?
+  headings    Json?
+  topic       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks      ContentChunk[]
+  characterSources CharacterKnowledgeSource[]
+
+  @@index([userId, status])
+}
+
+model ContentChunk {
+  id         String                          @id @default(cuid())
+  sourceId   String
+  chunkIndex Int
+  content    String                          @db.Text
+  heading    String?
+  tokenCount Int                             @default(0)
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime                        @default(now())
+  source     KnowledgeSource                 @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+}
+
+// ── Voice Layer ─────────────────────────────────────────────
+
+model Voice {
+  id              String      @id @default(cuid())
+  userId          String
+  name            String
+  elevenLabsVoiceId String
+  isCloned        Boolean     @default(false)
+  isDefault       Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characters      Character[]
+
+  @@index([userId])
+}
+
+// ── Character ───────────────────────────────────────────────
+
+enum CharacterStatus {
+  DRAFT
+  PUBLISHED
+  OFFLINE
+}
+
+model Character {
+  id                 String          @id @default(cuid())
+  userId             String
+  name               String
+  slug               String          @unique
+  avatarUrl          String?
+  bio                String          @db.Text
+  greeting           String          @db.Text
+  personalityTone    String          @default("friendly")
+  voiceId            String?
+  runwayCharacterId  String?
+  runwaySessionId    String?
+  idleVideoUrl       String?
+  speakingVideoUrl   String?
+  status             CharacterStatus @default(DRAFT)
+  suggestedQuestions Json?
+  allowedDomains     String[]        @default([])
+  widgetTheme        String          @default("light")
+  widgetPosition     String          @default("bottom-right")
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voice            Voice?         @relation(fields: [voiceId], references: [id])
+  conversations    Conversation[]
+  analytics        AnalyticsDaily[]
+  knowledgeSources CharacterKnowledgeSource[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ── Conversations ───────────────────────────────────────────
+
+model Conversation {
+  id          String    @id @default(cuid())
+  characterId String
+  sessionId   String
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  messages    Message[]
+
+  @@index([characterId])
+  @@index([sessionId])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String      @db.Text
+  sourcesJson    Json?
+  audioGenerated Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+// ── Analytics ───────────────────────────────────────────────
+
+model AnalyticsDaily {
+  id              String   @id @default(cuid())
+  characterId     String
+  date            DateTime @db.Date
+  conversations   Int      @default(0)
+  messages        Int      @default(0)
+  unansweredCount Int      @default(0)
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, date])
+  @@index([characterId])
+}
+
+// ── Character Knowledge Sources ────────────────────────────
+
+model CharacterKnowledgeSource {
+  id          String          @id @default(cuid())
+  characterId String
+  sourceId    String
+  createdAt   DateTime        @default(now())
+  character   Character       @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  source      KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, sourceId])
+  @@index([characterId])
+  @@index([sourceId])
+}
+
+// ── Rate Limiting ───────────────────────────────────────────
+
+model UsageRecord {
+  id        String   @id @default(cuid())
+  userId    String?
+  sessionId String?
+  endpoint  String
+  timestamp DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, endpoint, timestamp])
+  @@index([sessionId, endpoint, timestamp])
+}

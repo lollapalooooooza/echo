@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(head -30 /Users/bryanwen/Downloads/echo2.1/src/app/room/[slug]/page.tsx)",
+      "Bash(xargs ls -la)",
+      "Bash(npm install pdf-parse mammoth adm-zip)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx next build)"
+    ]
+  }
+}
