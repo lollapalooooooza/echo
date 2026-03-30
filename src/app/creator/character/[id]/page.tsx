@@ -8,32 +8,17 @@ import {
   Code,
   Copy,
   ExternalLink,
-  FileText,
-  Globe,
   Loader2,
   Play,
   RefreshCw,
   Save,
-  Type,
+  Trash2,
   Video,
   X,
 } from "lucide-react";
 
+import { KnowledgeSelection } from "@/components/knowledge-selection";
 import { cn } from "@/lib/utils";
-
-const sourceTypeIcon: Record<string, any> = {
-  URL: Globe,
-  UPLOAD: FileText,
-  TEXT: Type,
-  WEBSITE: Globe,
-};
-
-const sourceTypeBadge: Record<string, { label: string; color: string }> = {
-  URL: { label: "URL", color: "bg-blue-50 text-blue-700" },
-  UPLOAD: { label: "File", color: "bg-amber-50 text-amber-700" },
-  TEXT: { label: "Text", color: "bg-emerald-50 text-emerald-700" },
-  WEBSITE: { label: "Website", color: "bg-purple-50 text-purple-700" },
-};
 
 async function readResponse(response: Response) {
   const contentType = response.headers.get("content-type") || "";
@@ -64,6 +49,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
   const [runwayAvatarError, setRunwayAvatarError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [genVideo, setGenVideo] = useState(false);
   const [copied, setCopied] = useState("");
   const avatarRef = useRef<HTMLInputElement>(null);
@@ -204,12 +190,15 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
     }
   };
 
-  const toggleSource = (sourceId: string) => {
+  const toggleSourceIds = (sourceIds: string[]) => {
     setChar((prev: any) => {
       const ids = prev.knowledgeSourceIds || [];
+      const hasAll = sourceIds.every((sourceId) => ids.includes(sourceId));
       return {
         ...prev,
-        knowledgeSourceIds: ids.includes(sourceId) ? ids.filter((id: string) => id !== sourceId) : [...ids, sourceId],
+        knowledgeSourceIds: hasAll
+          ? ids.filter((id: string) => !sourceIds.includes(id))
+          : Array.from(new Set([...ids, ...sourceIds])),
       };
     });
   };
@@ -279,6 +268,27 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
     setGenVideo(false);
   };
 
+  const deleteCharacter = async () => {
+    if (!char?.id || deleting) return;
+    if (!window.confirm(`Delete "${char.name}"? This removes its conversations, analytics, and knowledge links.`)) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/characters", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: char.id }),
+      });
+      const data = await readResponse(res);
+      if (!res.ok) throw new Error(data.error || "Failed to delete character");
+      router.push("/creator/character");
+    } catch (e: any) {
+      alert(e.message || "Failed to delete character");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const copyText = (text: string, key: string) => { navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(""), 2000); };
 
   if (loading || !char) return <div className="py-20 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></div>;
@@ -286,8 +296,6 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
   const appUrl = typeof window !== "undefined" ? window.location.origin : "https://your-echo-domain.com";
   const scriptSnippet = `<script src="${appUrl}/widget.js" data-character-id="${char.id}" data-position="${char.widgetPosition || "bottom-right"}" async></script>`;
   const iframeSnippet = `<iframe src="${appUrl}/embed/${char.id}" width="400" height="600" style="border:none;border-radius:16px" allow="microphone"></iframe>`;
-  const selectedKnowledgeCount = char.knowledgeSourceIds?.length || 0;
-  const allKnowledgeSelected = knowledgeSources.length > 0 && selectedKnowledgeCount === knowledgeSources.length;
   const runwayAvatarStatus = typeof runwayAvatar?.status === "string" ? runwayAvatar.status.toUpperCase() : "";
   const canGenerateRunwayAvatar = !!char.avatarUrl;
   const showRunwayGenerateButton = canGenerateRunwayAvatar && (!char.runwayCharacterId || runwayAvatarStatus === "FAILED");
@@ -301,6 +309,9 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
           <p className="mt-1 text-sm text-muted-foreground">{char.status} · {char._count?.conversations || 0} conversations</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={deleteCharacter} disabled={deleting} className="flex h-8 items-center gap-1.5 rounded-md border border-red-200 px-3 text-[13px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Delete
+          </button>
           <button onClick={togglePublish} className={cn("flex h-8 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium", char.status === "PUBLISHED" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border hover:bg-muted/30")}>
             {char.status === "PUBLISHED" ? "✓ Published" : "Publish"}
           </button>
@@ -310,20 +321,22 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Edit fields */}
-        <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-white p-5 space-y-3">
-            <h3 className="text-sm font-semibold">Identity</h3>
-            <div><label className="mb-1 block text-[13px] font-medium">Name</label><input value={char.name} onChange={e => setChar((p: any) => ({ ...p, name: e.target.value }))} className="h-9 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" /></div>
+      <div className="space-y-4">
+        <div className="rounded-xl border border-border bg-white p-5 space-y-4">
+          <h3 className="text-sm font-semibold">Identity</h3>
+          <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
             <div>
               <label className="mb-1 block text-[13px] font-medium">Avatar</label>
-              <div className={cn("relative flex h-32 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed transition-colors", avatarDrag ? "border-foreground bg-muted/20" : "border-border hover:border-foreground/30")}
+              <div
+                className={cn("relative flex h-56 cursor-pointer items-center justify-center rounded-2xl border-2 border-dashed transition-colors", avatarDrag ? "border-foreground bg-muted/20" : "border-border hover:border-foreground/30")}
                 onClick={() => avatarRef.current?.click()}
-                onDragOver={e => { e.preventDefault(); setAvatarDrag(true); }} onDragLeave={() => setAvatarDrag(false)} onDrop={handleAvatarDrop}>
+                onDragOver={e => { e.preventDefault(); setAvatarDrag(true); }}
+                onDragLeave={() => setAvatarDrag(false)}
+                onDrop={handleAvatarDrop}
+              >
                 {char.avatarUrl ? (
                   <div className="relative h-full w-full">
-                    <img src={char.avatarUrl} alt="Avatar" className="h-full w-full rounded-lg object-cover" />
+                    <img src={char.avatarUrl} alt="Avatar" className="h-full w-full rounded-2xl object-cover" />
                     <button onClick={e => { e.stopPropagation(); setChar((p: any) => ({ ...p, avatarUrl: "" })); }} className="absolute right-2 top-2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70"><X className="h-3 w-3" /></button>
                   </div>
                 ) : uploadingAvatar ? (
@@ -334,146 +347,92 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
                 <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && uploadAvatar(e.target.files[0])} />
               </div>
             </div>
-            <div>
-              <label className="mb-1 block text-[13px] font-medium">Runway Avatar ID</label>
-              <input value={char.runwayCharacterId || ""} onChange={e => setChar((p: any) => ({ ...p, runwayCharacterId: e.target.value }))} placeholder="Optional: avat_xxx" className="h-9 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" />
-              <p className="mt-1 text-[11px] text-muted-foreground">Use this for a true real-time Runway avatar. The uploaded image and generated clips are a separate fallback path.</p>
-            </div>
-            <div><label className="mb-1 block text-[13px] font-medium">Bio</label><textarea value={char.bio} onChange={e => setChar((p: any) => ({ ...p, bio: e.target.value }))} rows={3} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" /></div>
-            <div><label className="mb-1 block text-[13px] font-medium">Greeting</label><textarea value={char.greeting} onChange={e => setChar((p: any) => ({ ...p, greeting: e.target.value }))} rows={3} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" /></div>
-          </div>
 
-          <div className="rounded-xl border border-border bg-white p-5 space-y-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="space-y-3">
+              <div><label className="mb-1 block text-[13px] font-medium">Name</label><input value={char.name} onChange={e => setChar((p: any) => ({ ...p, name: e.target.value }))} className="h-9 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" /></div>
+              <div><label className="mb-1 block text-[13px] font-medium">Bio</label><textarea value={char.bio} onChange={e => setChar((p: any) => ({ ...p, bio: e.target.value }))} rows={3} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" /></div>
+              <div><label className="mb-1 block text-[13px] font-medium">Greeting</label><textarea value={char.greeting} onChange={e => setChar((p: any) => ({ ...p, greeting: e.target.value }))} rows={3} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" /></div>
               <div>
-                <h3 className="text-sm font-semibold flex items-center gap-2"><BookOpen className="h-4 w-4" /> Character Knowledge</h3>
-                <p className="mt-1 text-[13px] text-muted-foreground">Add or remove indexed sources for this character. No sources selected means the character can use all of your knowledge.</p>
+                <label className="mb-1 block text-[13px] font-medium">Runway Avatar ID</label>
+                <input value={char.runwayCharacterId || ""} onChange={e => setChar((p: any) => ({ ...p, runwayCharacterId: e.target.value }))} placeholder="Optional: avat_xxx" className="h-9 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" />
+                <p className="mt-1 text-[11px] text-muted-foreground">Use this for a true real-time avatar if you already have a Runway character ID.</p>
               </div>
-              <a href="/creator/knowledge" className="text-[12px] font-medium text-foreground underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-500">
-                Manage library
-              </a>
             </div>
-
-            {loadingKnowledge ? (
-              <div className="py-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" /></div>
-            ) : knowledgeSources.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border py-8 text-center">
-                <BookOpen className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
-                <p className="text-[13px] text-muted-foreground">No indexed knowledge sources yet.</p>
-                <a href="/creator/knowledge" className="text-[13px] font-medium text-foreground underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-500">
-                  Add content first
-                </a>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <button
-                  onClick={toggleAllSources}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                    allKnowledgeSelected ? "border-foreground bg-foreground/5" : "border-border hover:border-foreground/30"
-                  )}
-                >
-                  <div className={cn("flex h-5 w-5 items-center justify-center rounded border transition-colors", allKnowledgeSelected ? "border-foreground bg-foreground text-white" : "border-border")}>
-                    {allKnowledgeSelected && <Check className="h-3 w-3" />}
-                  </div>
-                  <span className="text-[13px] font-medium">{allKnowledgeSelected ? "Deselect all" : "Select all"} ({knowledgeSources.length} sources)</span>
-                </button>
-
-                <div className="max-h-64 overflow-y-auto space-y-1.5 rounded-xl border border-border p-2">
-                  {knowledgeSources.map((source: any) => {
-                    const Icon = sourceTypeIcon[source.type] || FileText;
-                    const badge = sourceTypeBadge[source.type] || sourceTypeBadge.TEXT;
-                    const isSelected = char.knowledgeSourceIds?.includes(source.id);
-
-                    return (
-                      <button
-                        key={source.id}
-                        onClick={() => toggleSource(source.id)}
-                        className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors", isSelected ? "bg-foreground/5" : "hover:bg-muted/30")}
-                      >
-                        <div className={cn("flex h-4.5 w-4.5 items-center justify-center rounded border transition-colors", isSelected ? "border-foreground bg-foreground text-white" : "border-border")}>
-                          {isSelected && <Check className="h-3 w-3" />}
-                        </div>
-                        <Icon className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[13px] font-medium truncate">{source.title}</p>
-                          <div className="mt-0.5 flex items-center gap-2">
-                            <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium", badge.color)}>{badge.label}</span>
-                            {source.topic && <span className="text-[10px] text-muted-foreground">{source.topic}</span>}
-                            <span className="text-[10px] text-muted-foreground">{source.chunkCount} chunks</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <p className="text-[11px] text-muted-foreground">
-                  {selectedKnowledgeCount > 0
-                    ? `${selectedKnowledgeCount} source${selectedKnowledgeCount !== 1 ? "s" : ""} selected`
-                    : "No sources selected — character will use all your knowledge"}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Runway Video */}
-          <div className="rounded-xl border border-border bg-white p-5 space-y-3">
-            <h3 className="text-sm font-semibold flex items-center gap-2"><Video className="h-4 w-4" /> Runway Video Character</h3>
-            <p className="text-[13px] text-muted-foreground">This section manages clip-based fallback video. A real-time avatar uses the Runway Avatar ID above and a different session flow.</p>
-            <div className="flex gap-2">
-              <button onClick={() => generateVideo("idle")} disabled={genVideo || !char.avatarUrl} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
-                {genVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />} Generate Idle
-              </button>
-              <button onClick={() => generateVideo("speaking")} disabled={genVideo || !char.avatarUrl} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
-                {genVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />} Generate Speaking
-              </button>
-              <button onClick={() => generateVideo("both")} disabled={genVideo || !char.avatarUrl} className="flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-white hover:opacity-80 disabled:opacity-50">
-                {genVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />} Generate Both
-              </button>
-            </div>
-            {char.runwayCharacterId && <p className="text-[11px] text-sky-600">Runway live avatar configured: {char.runwayCharacterId}</p>}
-            {char.idleVideoUrl && <p className="text-[11px] text-emerald-600">✓ Idle video ready</p>}
-            {char.speakingVideoUrl && <p className="text-[11px] text-emerald-600">✓ Speaking video ready</p>}
-            {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload an avatar first.</p>}
-          </div>
-
-          <div className="rounded-xl border border-border bg-white p-5 space-y-3">
-            <h3 className="text-sm font-semibold">Runway Live Session</h3>
-            <p className="text-[13px] text-muted-foreground">Character ID and live session testing for the Runway avatar bound to this character.</p>
-            <div className="rounded-lg border border-border bg-muted/20 p-3 text-[13px]">
-              <p><span className="font-medium">Character ID:</span> {char.runwayCharacterId || "Not configured"}</p>
-              <p className="mt-1">
-                <span className="font-medium">Avatar status:</span>{" "}
-                {runwayAvatarLoading ? "Loading…" : runwayAvatar?.status || (char.runwayCharacterId ? "Unknown" : "Unavailable")}
-              </p>
-              {runwayAvatar?.voice?.name && <p className="mt-1"><span className="font-medium">Voice:</span> {runwayAvatar.voice.name}</p>}
-              {runwayAvatarError && <p className="mt-2 text-[12px] text-rose-600">{runwayAvatarError}</p>}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => char.id && refreshRunwayAvatar(char.id)} disabled={runwayAvatarLoading || !char.runwayCharacterId} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
-                {runwayAvatarLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh status
-              </button>
-              {showRunwayGenerateButton && (
-                <button onClick={regenerateRunwayAvatar} disabled={regeneratingRunwayAvatar} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
-                  {regeneratingRunwayAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
-                  {runwayAvatarStatus === "FAILED" ? "Regenerate avatar" : "Generate avatar"}
-                </button>
-              )}
-              <a href={`/room/${char.slug}`} target="_blank" className={cn("flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-white hover:opacity-80", liveSessionDisabled && "pointer-events-none opacity-50")}>
-                <Play className="h-3.5 w-3.5" /> Live session test
-              </a>
-            </div>
-            {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload a character image to generate a Runway avatar.</p>}
-            {runwayAvatarStatus === "FAILED" && <p className="text-[11px] text-amber-600">Runway marked this avatar as failed. Regenerate it to restore live sessions.</p>}
           </div>
         </div>
 
-        {/* Embed codes */}
-        <div className="space-y-4">
+        <div className="rounded-xl border border-border bg-white p-5 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold flex items-center gap-2"><BookOpen className="h-4 w-4" /> Character Knowledge</h3>
+              <p className="mt-1 text-[13px] text-muted-foreground">Choose the exact libraries this character should use. Website crawls are grouped by main domain so they are easier to pick.</p>
+            </div>
+            <a href="/creator/knowledge" className="text-[12px] font-medium text-foreground underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-500">
+              Manage library
+            </a>
+          </div>
+          <KnowledgeSelection
+            sources={knowledgeSources}
+            loading={loadingKnowledge}
+            selectedSourceIds={char.knowledgeSourceIds || []}
+            onToggleAll={toggleAllSources}
+            onToggleItem={(item) => toggleSourceIds(item.sourceIds)}
+          />
+        </div>
+
+        <div className="rounded-xl border border-border bg-white p-5 space-y-3">
+          <h3 className="text-sm font-semibold">Runway Live Character</h3>
+          <p className="text-[13px] text-muted-foreground">Manage the real-time Runway avatar used for live sessions and instant face-to-face conversations.</p>
+          <div className="rounded-lg border border-border bg-muted/20 p-3 text-[13px]">
+            <p><span className="font-medium">Character ID:</span> {char.runwayCharacterId || "Not configured"}</p>
+            <p className="mt-1">
+              <span className="font-medium">Avatar status:</span>{" "}
+              {runwayAvatarLoading ? "Loading…" : runwayAvatar?.status || (char.runwayCharacterId ? "Unknown" : "Unavailable")}
+            </p>
+            {runwayAvatar?.voice?.name && <p className="mt-1"><span className="font-medium">Voice:</span> {runwayAvatar.voice.name}</p>}
+            {runwayAvatarError && <p className="mt-2 text-[12px] text-rose-600">{runwayAvatarError}</p>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => char.id && refreshRunwayAvatar(char.id)} disabled={runwayAvatarLoading || !char.runwayCharacterId} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
+              {runwayAvatarLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh status
+            </button>
+            {showRunwayGenerateButton && (
+              <button onClick={regenerateRunwayAvatar} disabled={regeneratingRunwayAvatar} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
+                {regeneratingRunwayAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                {runwayAvatarStatus === "FAILED" ? "Regenerate avatar" : "Generate avatar"}
+              </button>
+            )}
+            <a href={`/room/${char.slug}`} target="_blank" className={cn("flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-white hover:opacity-80", liveSessionDisabled && "pointer-events-none opacity-50")}>
+              <Play className="h-3.5 w-3.5" /> Live session test
+            </a>
+          </div>
+          {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload a character image to generate a Runway live character.</p>}
+          {runwayAvatarStatus === "FAILED" && <p className="text-[11px] text-amber-600">Runway marked this avatar as failed. Regenerate it to restore live sessions.</p>}
+        </div>
+
+        <div className="rounded-xl border border-border bg-white p-5 space-y-3">
+          <h3 className="text-sm font-semibold flex items-center gap-2"><Video className="h-4 w-4" /> Runway Fallback Video</h3>
+          <p className="text-[13px] text-muted-foreground">These prerecorded clips are used as a fallback when a live Runway session is not available.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => generateVideo("idle")} disabled={genVideo || !char.avatarUrl} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
+              {genVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />} Generate Idle
+            </button>
+            <button onClick={() => generateVideo("speaking")} disabled={genVideo || !char.avatarUrl} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
+              {genVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />} Generate Speaking
+            </button>
+            <button onClick={() => generateVideo("both")} disabled={genVideo || !char.avatarUrl} className="flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-white hover:opacity-80 disabled:opacity-50">
+              {genVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />} Generate Both
+            </button>
+          </div>
+          {char.idleVideoUrl && <p className="text-[11px] text-emerald-600">✓ Idle video ready</p>}
+          {char.speakingVideoUrl && <p className="text-[11px] text-emerald-600">✓ Speaking video ready</p>}
+          {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload an avatar first.</p>}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-xl border border-border bg-white p-5 space-y-3">
             <h3 className="text-sm font-semibold flex items-center gap-2"><Code className="h-4 w-4" /> Embed Widget</h3>
-            <p className="text-[13px] text-muted-foreground">Add this script to any website to embed your character as a chat widget.</p>
+            <p className="text-[13px] text-muted-foreground">Add this script to embed your character as a floating widget.</p>
             <div className="relative">
               <pre className="overflow-x-auto rounded-lg bg-neutral-950 p-4 text-xs text-neutral-300" style={{ fontFamily: "var(--font-mono)" }}>{scriptSnippet}</pre>
               <button onClick={() => copyText(scriptSnippet, "script")} className="absolute right-2 top-2 flex h-7 items-center gap-1 rounded-md bg-white/10 px-2 text-[11px] text-white/60 hover:bg-white/20">
@@ -484,6 +443,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
           <div className="rounded-xl border border-border bg-white p-5 space-y-3">
             <h3 className="text-sm font-semibold">Iframe Embed</h3>
+            <p className="text-[13px] text-muted-foreground">Use the iframe when you want the conversation experience in a fixed container.</p>
             <div className="relative">
               <pre className="overflow-x-auto rounded-lg bg-neutral-950 p-4 text-xs text-neutral-300" style={{ fontFamily: "var(--font-mono)" }}>{iframeSnippet}</pre>
               <button onClick={() => copyText(iframeSnippet, "iframe")} className="absolute right-2 top-2 flex h-7 items-center gap-1 rounded-md bg-white/10 px-2 text-[11px] text-white/60 hover:bg-white/20">
@@ -494,6 +454,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
           <div className="rounded-xl border border-border bg-white p-5 space-y-3">
             <h3 className="text-sm font-semibold">Direct Links</h3>
+            <p className="text-[13px] text-muted-foreground">Open the hosted conversation room or standalone embed page directly.</p>
             <div className="space-y-2">
               <a href={`/room/${char.slug}`} target="_blank" className="flex items-center gap-2 text-[13px] text-muted-foreground hover:text-foreground">
                 <Play className="h-3.5 w-3.5" /> Conversation room: {appUrl}/room/{char.slug} <ExternalLink className="h-3 w-3" />

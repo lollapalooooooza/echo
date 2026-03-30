@@ -1,24 +1,12 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Loader2, Plus, X, Mic, Volume2, Camera, BookOpen, FileText, Globe, Type, Check } from "lucide-react";
+import { Save, Loader2, Plus, X, Mic, Volume2, Camera, BookOpen } from "lucide-react";
+
+import { KnowledgeSelection } from "@/components/knowledge-selection";
 import { cn } from "@/lib/utils";
 
 const TONES = ["friendly", "professional", "casual", "witty", "academic", "storyteller"];
-
-const sourceTypeIcon: Record<string, any> = {
-  URL: Globe,
-  UPLOAD: FileText,
-  TEXT: Type,
-  WEBSITE: Globe,
-};
-
-const sourceTypeBadge: Record<string, { label: string; color: string }> = {
-  URL: { label: "URL", color: "bg-blue-50 text-blue-700" },
-  UPLOAD: { label: "File", color: "bg-amber-50 text-amber-700" },
-  TEXT: { label: "Text", color: "bg-emerald-50 text-emerald-700" },
-  WEBSITE: { label: "Website", color: "bg-purple-50 text-purple-700" },
-};
 
 async function readResponse(response: Response) {
   const contentType = response.headers.get("content-type") || "";
@@ -98,12 +86,12 @@ export default function NewCharacterPage() {
   const addQ = () => { if (!newQ.trim()) return; set("suggestedQuestions", [...form.suggestedQuestions.filter(Boolean), newQ.trim()]); setNewQ(""); };
   const rmQ = (i: number) => set("suggestedQuestions", form.suggestedQuestions.filter((_, j) => j !== i));
 
-  const toggleSource = (sourceId: string) => {
-    const ids = form.knowledgeSourceIds;
-    if (ids.includes(sourceId)) {
-      set("knowledgeSourceIds", ids.filter((id) => id !== sourceId));
+  const toggleSourceIds = (sourceIds: string[]) => {
+    const hasAll = sourceIds.every((sourceId) => form.knowledgeSourceIds.includes(sourceId));
+    if (hasAll) {
+      set("knowledgeSourceIds", form.knowledgeSourceIds.filter((id) => !sourceIds.includes(id)));
     } else {
-      set("knowledgeSourceIds", [...ids, sourceId]);
+      set("knowledgeSourceIds", Array.from(new Set([...form.knowledgeSourceIds, ...sourceIds])));
     }
   };
 
@@ -222,71 +210,13 @@ export default function NewCharacterPage() {
           <p className="text-[13px] text-muted-foreground mb-3">
             Select which knowledge sources this character can reference. If none selected, the character uses all your knowledge.
           </p>
-          {loadingKnowledge ? (
-            <div className="py-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" /></div>
-          ) : knowledgeSources.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border py-8 text-center">
-              <BookOpen className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
-              <p className="text-[13px] text-muted-foreground">No knowledge sources yet.</p>
-              <a href="/creator/knowledge" className="text-[13px] font-medium text-foreground underline underline-offset-4 decoration-neutral-300 hover:decoration-neutral-500">
-                Add content first
-              </a>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {/* Select all toggle */}
-              <button onClick={toggleAllSources}
-                className={cn("flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  form.knowledgeSourceIds.length === knowledgeSources.length
-                    ? "border-foreground bg-foreground/5"
-                    : "border-border hover:border-foreground/30")}>
-                <div className={cn("flex h-5 w-5 items-center justify-center rounded border transition-colors",
-                  form.knowledgeSourceIds.length === knowledgeSources.length
-                    ? "border-foreground bg-foreground text-white"
-                    : "border-border")}>
-                  {form.knowledgeSourceIds.length === knowledgeSources.length && <Check className="h-3 w-3" />}
-                </div>
-                <span className="text-[13px] font-medium">
-                  {form.knowledgeSourceIds.length === knowledgeSources.length ? "Deselect all" : "Select all"} ({knowledgeSources.length} sources)
-                </span>
-              </button>
-
-              {/* Individual sources */}
-              <div className="max-h-64 overflow-y-auto space-y-1.5 rounded-xl border border-border p-2">
-                {knowledgeSources.map((source: any) => {
-                  const Icon = sourceTypeIcon[source.type] || FileText;
-                  const badge = sourceTypeBadge[source.type] || sourceTypeBadge.TEXT;
-                  const isSelected = form.knowledgeSourceIds.includes(source.id);
-
-                  return (
-                    <button key={source.id} onClick={() => toggleSource(source.id)}
-                      className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                        isSelected ? "bg-foreground/5" : "hover:bg-muted/30")}>
-                      <div className={cn("flex h-4.5 w-4.5 items-center justify-center rounded border transition-colors",
-                        isSelected ? "border-foreground bg-foreground text-white" : "border-border")}>
-                        {isSelected && <Check className="h-3 w-3" />}
-                      </div>
-                      <Icon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium truncate">{source.title}</p>
-                        <div className="mt-0.5 flex items-center gap-2">
-                          <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium", badge.color)}>{badge.label}</span>
-                          {source.topic && <span className="text-[10px] text-muted-foreground">{source.topic}</span>}
-                          <span className="text-[10px] text-muted-foreground">{source.chunkCount} chunks</span>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <p className="text-[11px] text-muted-foreground">
-                {form.knowledgeSourceIds.length > 0
-                  ? `${form.knowledgeSourceIds.length} source${form.knowledgeSourceIds.length !== 1 ? "s" : ""} selected`
-                  : "No sources selected — character will use all your knowledge"}
-              </p>
-            </div>
-          )}
+          <KnowledgeSelection
+            sources={knowledgeSources}
+            loading={loadingKnowledge}
+            selectedSourceIds={form.knowledgeSourceIds}
+            onToggleAll={toggleAllSources}
+            onToggleItem={(item) => toggleSourceIds(item.sourceIds)}
+          />
         </Section>
 
         {/* Personality */}

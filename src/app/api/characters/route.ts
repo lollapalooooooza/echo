@@ -103,3 +103,29 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 404 });
   }
 }
+
+// DELETE /api/characters — delete character
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (session.user as any).id;
+
+  const body = await req.json().catch(() => ({}));
+  const characterId = typeof body?.id === "string" ? body.id : req.nextUrl.searchParams.get("id");
+
+  if (!characterId) {
+    return NextResponse.json({ error: "id required" }, { status: 400 });
+  }
+
+  const character = await db.character.findUnique({
+    where: { id: characterId },
+    select: { id: true, userId: true },
+  });
+
+  if (!character || character.userId !== userId) {
+    return NextResponse.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  await db.character.delete({ where: { id: characterId } });
+  return NextResponse.json({ success: true });
+}

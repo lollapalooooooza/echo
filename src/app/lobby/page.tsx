@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Search, Users, MessageCircle, Loader2, Sparkles, Radio } from "lucide-react";
+import { ArrowRight, MessageCircle, Loader2, Radio, Search, Sparkles, Users } from "lucide-react";
 import { formatNumber, cn } from "@/lib/utils";
 
 const toneCfg: Record<string, { label: string; color: string; bg: string }> = {
@@ -14,6 +14,27 @@ const toneCfg: Record<string, { label: string; color: string; bg: string }> = {
 };
 
 const TONES = ["all", ...Object.keys(toneCfg)];
+
+function LobbyCharacterArt({ character }: { character: any }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (character.avatarUrl && !imageFailed) {
+    return (
+      <img
+        src={character.avatarUrl}
+        alt={character.name}
+        onError={() => setImageFailed(true)}
+        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-neutral-100 via-neutral-50 to-neutral-200 text-5xl font-semibold text-neutral-400">
+      {character.name?.[0]}
+    </div>
+  );
+}
 
 export default function LobbyPage() {
   const [characters, setCharacters] = useState<any[]>([]);
@@ -126,72 +147,61 @@ export default function LobbyPage() {
                 <Link
                   key={c.id}
                   href={`/room/${c.slug}`}
-                  className="group relative flex flex-col rounded-2xl border border-border/50 bg-white overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-neutral-200/60 hover:-translate-y-0.5"
+                  className="group relative flex flex-col overflow-hidden rounded-[28px] border border-border/50 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-neutral-200/70"
                 >
-                  {/* Activity indicator */}
-                  <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
-                    <span className="live-dot" style={{ width: 6, height: 6 }} />
-                    <span className="text-[10px] font-medium text-emerald-600">Live</span>
-                  </div>
-
-                  {/* Avatar area */}
-                  <div className="flex items-center gap-4 px-5 pt-5 pb-3">
-                    <div className="relative flex-shrink-0">
-                      {c.avatarUrl ? (
-                        <img src={c.avatarUrl} alt="" className="h-14 w-14 rounded-2xl object-cover shadow-sm ring-1 ring-border/30" />
-                      ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-lg font-semibold text-neutral-400 ring-1 ring-border/30">
-                          {c.name?.[0]}
+                  <div className="relative aspect-[5/4] overflow-hidden bg-neutral-100">
+                    <LobbyCharacterArt character={c} />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                    <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 backdrop-blur-sm">
+                      <span className="live-dot" style={{ width: 6, height: 6 }} />
+                      <span className="text-[10px] font-medium text-emerald-700">Live</span>
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-4 text-white">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-lg font-semibold leading-tight">{c.name}</h3>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium", tone.bg, tone.color)}>
+                            {tone.label}
+                          </span>
+                          {c.user?.name && (
+                            <span className="truncate text-[11px] text-white/75">by {c.user.name}</span>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-[15px] font-semibold truncate leading-tight">{c.name}</h3>
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium", tone.bg, tone.color)}>
-                          {tone.label}
-                        </span>
-                        {c.user?.name && (
-                          <span className="text-[11px] text-muted-foreground/70 truncate">by {c.user.name}</span>
-                        )}
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Bio */}
-                  <div className="px-5 pb-3">
-                    <p className="text-[13px] leading-relaxed text-muted-foreground line-clamp-2">{c.bio}</p>
-                  </div>
-
-                  {/* Greeting preview */}
-                  {c.greeting && (
-                    <div className="mx-5 mb-3 rounded-xl bg-neutral-50 px-3.5 py-2.5">
-                      <p className="text-[12px] italic text-muted-foreground/80 line-clamp-2">&ldquo;{c.greeting}&rdquo;</p>
-                    </div>
-                  )}
-
-                  {/* Suggested prompts */}
-                  {c.suggestedQuestions?.length > 0 && (
-                    <div className="px-5 pb-3 flex flex-wrap gap-1.5">
-                      {c.suggestedQuestions.slice(0, 2).map((q: string, i: number) => (
-                        <span key={i} className="rounded-lg bg-neutral-100/80 px-2.5 py-1 text-[11px] text-muted-foreground truncate max-w-[180px]">
-                          {q}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Footer */}
-                  <div className="mt-auto flex items-center justify-between border-t border-border/30 px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-                        <MessageCircle className="h-3 w-3" />
-                        {formatNumber(c._count?.conversations || 0)}
+                      <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium backdrop-blur-sm">
+                        {formatNumber(c._count?.conversations || 0)} chats
                       </span>
                     </div>
-                    <span className="text-[12px] font-medium text-foreground/80 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      Start talking &rarr;
-                    </span>
+                  </div>
+
+                  <div className="space-y-4 p-5">
+                    <p className="line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">{c.bio}</p>
+
+                    {c.greeting && (
+                      <div className="rounded-2xl bg-neutral-50 px-3.5 py-3">
+                        <p className="line-clamp-2 text-[12px] italic text-muted-foreground/85">&ldquo;{c.greeting}&rdquo;</p>
+                      </div>
+                    )}
+
+                    {c.suggestedQuestions?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.suggestedQuestions.slice(0, 2).map((q: string, i: number) => (
+                          <span key={i} className="max-w-[220px] truncate rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] text-muted-foreground">
+                            {q}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between border-t border-border/40 pt-4">
+                      <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground/80">
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        {formatNumber(c._count?.conversations || 0)} conversations
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-foreground/80">
+                        Start talking <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                      </span>
+                    </div>
                   </div>
                 </Link>
               );
