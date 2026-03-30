@@ -13,6 +13,9 @@ import type { ScrapeResult, ScrapeOptions } from "@/types";
 // ── Configuration ────────────────────────────────────────────
 
 const DEFAULT_TIMEOUT = 30000;
+const DISCOVERY_TIMEOUT = 12000;
+const MAX_SITEMAP_FETCHES = 12;
+const SITEMAP_CANDIDATE_PATHS = ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml"];
 
 const BROWSER_HEADERS: Record<string, string> = {
   "User-Agent":
@@ -126,41 +129,21 @@ export async function crawlWebsite(
  * Discover pages from a website for crawling
  */
 export async function discoverPages(baseUrl: string, maxPages = 30): Promise<string[]> {
-  // Try Firecrawl map first
-  if (env.FIRECRAWL_API_KEY) {
-    try {
-      const res = await fetch("https://api.firecrawl.dev/v1/map", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.FIRECRAWL_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url: baseUrl, limit: maxPages }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const links: string[] = data.links || [];
-        const domain = new URL(baseUrl).hostname;
-        const unique = Array.from(
-          new Set(
-            links.filter((l) => {
-              try {
-                return new URL(l).hostname === domain;
-              } catch {
-                return false;
-              }
-            })
-          )
-        );
-        if (unique.length > 0) return unique.slice(0, maxPages);
-      }
-    } catch (e) {
-      console.warn("[Scrape] Firecrawl map failed:", e);
-    }
+  const discoveryLimit = Math.max(maxPages * 4, 60);
+  const [sitemapUrls, firecrawlUrls, nativeUrls] = await Promise.all([
+    discoverPagesFromSitemaps(baseUrl, discoveryLimit),
+    discoverPagesWithFirecrawl(baseUrl, discoveryLimit),
+    nativeDiscoverPages(baseUrl, Math.max(maxPages * 2, 20)),
+  ]);
+
+  const merged = Array.from(new Set([...sitemapUrls, ...firecrawlUrls, ...nativeUrls]));
+  const prioritized = prioritizeDiscoveredUrls(merged, baseUrl).slice(0, maxPages);
+
+  if (prioritized.length > 0) {
+    return prioritized;
   }
 
-  // Native link discovery
-  return nativeDiscoverPages(baseUrl, maxPages);
+  return [normalizeDiscoveredUrl(baseUrl)];
 }
 
 // ── Scrapling Backend (Python subprocess) ────────────────────
@@ -392,7 +375,7 @@ async function nativeFetch(url: string, opts: ScrapeOptions, retries = 2): Promi
 async function nativeDiscoverPages(baseUrl: string, maxPages: number): Promise<string[]> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT);
     const res = await fetch(baseUrl, {
       headers: BROWSER_HEADERS,
       signal: controller.signal,
@@ -402,30 +385,242 @@ async function nativeDiscoverPages(baseUrl: string, maxPages: number): Promise<s
     if (!res.ok) return [baseUrl];
 
     const html = await res.text();
-    const domain = new URL(baseUrl).hostname;
     const linkRegex = /href=["']([^"'#]+)["']/gi;
-    const urls = new Set<string>([baseUrl]);
+    const urls = new Set<string>([normalizeDiscoveredUrl(baseUrl)]);
     let match;
     while ((match = linkRegex.exec(html)) !== null) {
       try {
-        const resolved = new URL(match[1], baseUrl).href;
-        if (
-          new URL(resolved).hostname === domain &&
-          !resolved.match(
-            /\.(jpg|jpeg|png|gif|css|js|svg|ico|woff|woff2|pdf|zip|mp4|mp3)(\?|$)/i
-          )
-        ) {
-          urls.add(resolved.split("?")[0].split("#")[0]);
+        const resolved = normalizeDiscoveredUrl(new URL(match[1], baseUrl).href);
+        if (!shouldSkipDiscoveredUrl(resolved, baseUrl)) {
+          urls.add(resolved);
         }
       } catch {
         /* skip invalid URLs */
       }
     }
-    return Array.from(urls).slice(0, maxPages);
+    return prioritizeDiscoveredUrls(Array.from(urls), baseUrl).slice(0, maxPages);
   } catch (e) {
     console.warn("[Scrape] Native discovery failed:", e);
-    return [baseUrl];
+    return [normalizeDiscoveredUrl(baseUrl)];
   }
+}
+
+async function discoverPagesWithFirecrawl(baseUrl: string, maxPages: number): Promise<string[]> {
+  if (!env.FIRECRAWL_API_KEY) return [];
+
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v1/map", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.FIRECRAWL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: baseUrl, limit: maxPages }),
+    });
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const links: string[] = data.links || [];
+    return prioritizeDiscoveredUrls(links, baseUrl).slice(0, maxPages);
+  } catch (e) {
+    console.warn("[Scrape] Firecrawl map failed:", e);
+    return [];
+  }
+}
+
+async function discoverPagesFromSitemaps(baseUrl: string, maxPages: number): Promise<string[]> {
+  const sitemapQueue = await getCandidateSitemaps(baseUrl);
+  if (sitemapQueue.length === 0) return [];
+
+  const visited = new Set<string>();
+  const discovered = new Set<string>();
+
+  while (sitemapQueue.length > 0 && visited.size < MAX_SITEMAP_FETCHES && discovered.size < maxPages * 2) {
+    const sitemapUrl = sitemapQueue.shift()!;
+    if (visited.has(sitemapUrl)) continue;
+    visited.add(sitemapUrl);
+
+    const result = await fetchSitemapUrls(sitemapUrl);
+    for (const nested of result.nestedSitemaps) {
+      if (!visited.has(nested) && isWithinDiscoveryScope(nested, baseUrl)) {
+        sitemapQueue.push(nested);
+      }
+    }
+
+    for (const pageUrl of result.pageUrls) {
+      if (!shouldSkipDiscoveredUrl(pageUrl, baseUrl)) {
+        discovered.add(normalizeDiscoveredUrl(pageUrl));
+      }
+    }
+  }
+
+  return prioritizeDiscoveredUrls(Array.from(discovered), baseUrl).slice(0, maxPages);
+}
+
+async function getCandidateSitemaps(baseUrl: string): Promise<string[]> {
+  const base = new URL(baseUrl);
+  const candidates = new Set<string>(
+    SITEMAP_CANDIDATE_PATHS.map((pathname) => new URL(pathname, base.origin).toString())
+  );
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT);
+    const res = await fetch(new URL("/robots.txt", base.origin), {
+      headers: BROWSER_HEADERS,
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const robots = await res.text();
+      for (const match of Array.from(robots.matchAll(/^\s*Sitemap:\s*(\S+)\s*$/gim))) {
+        try {
+          candidates.add(normalizeDiscoveredUrl(new URL(match[1], base.origin).toString()));
+        } catch {
+          /* ignore invalid sitemap URLs */
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[Scrape] robots.txt sitemap discovery failed:", e);
+  }
+
+  return Array.from(candidates);
+}
+
+async function fetchSitemapUrls(sitemapUrl: string): Promise<{ nestedSitemaps: string[]; pageUrls: string[] }> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT);
+    const res = await fetch(sitemapUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Accept: "application/xml,text/xml,application/xhtml+xml,text/html;q=0.8,*/*;q=0.5",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return { nestedSitemaps: [], pageUrls: [] };
+
+    const xml = await res.text();
+    const locs = Array.from(xml.matchAll(/<loc>([\s\S]*?)<\/loc>/gi))
+      .map((match) => decodeXmlEntities(match[1]).trim())
+      .filter(Boolean);
+
+    if (/<sitemapindex[\s>]/i.test(xml)) {
+      return { nestedSitemaps: locs.map((loc) => normalizeDiscoveredUrl(loc)), pageUrls: [] };
+    }
+
+    return { nestedSitemaps: [], pageUrls: locs };
+  } catch (e) {
+    console.warn(`[Scrape] Sitemap fetch failed for ${sitemapUrl}:`, e);
+    return { nestedSitemaps: [], pageUrls: [] };
+  }
+}
+
+function prioritizeDiscoveredUrls(urls: string[], baseUrl: string) {
+  return Array.from(
+    new Set(
+      urls
+        .map((url) => {
+          try {
+            return normalizeDiscoveredUrl(url);
+          } catch {
+            return null;
+          }
+        })
+        .filter((url): url is string => !!url)
+        .filter((url) => !shouldSkipDiscoveredUrl(url, baseUrl))
+    )
+  ).sort((left, right) => scoreDiscoveredUrl(right, baseUrl) - scoreDiscoveredUrl(left, baseUrl));
+}
+
+function normalizeDiscoveredUrl(url: string) {
+  const parsed = new URL(url);
+  parsed.hash = "";
+  parsed.search = "";
+
+  if ((parsed.protocol === "https:" && parsed.port === "443") || (parsed.protocol === "http:" && parsed.port === "80")) {
+    parsed.port = "";
+  }
+
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+  return parsed.toString();
+}
+
+function normalizeDiscoveryHost(hostname: string) {
+  return hostname.replace(/^www\./i, "").toLowerCase();
+}
+
+function isWithinDiscoveryScope(candidate: string, baseUrl: string) {
+  try {
+    const candidateUrl = new URL(candidate);
+    const base = new URL(baseUrl);
+    const sameHost = normalizeDiscoveryHost(candidateUrl.hostname) === normalizeDiscoveryHost(base.hostname);
+    if (!sameHost) return false;
+
+    const basePath = normalizeScopedPath(base.pathname);
+    const candidatePath = normalizeScopedPath(candidateUrl.pathname);
+    if (basePath === "/") return true;
+    return candidatePath === basePath || candidatePath.startsWith(`${basePath}/`);
+  } catch {
+    return false;
+  }
+}
+
+function normalizeScopedPath(pathname: string) {
+  return pathname.replace(/\/+$/, "") || "/";
+}
+
+function shouldSkipDiscoveredUrl(url: string, baseUrl: string) {
+  if (!isWithinDiscoveryScope(url, baseUrl)) return true;
+
+  try {
+    const parsed = new URL(url);
+    const value = `${parsed.hostname}${parsed.pathname}`.toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|css|js|svg|ico|woff|woff2|pdf|zip|mp4|mp3|mov|webm|json|xml)(\/?$|$)/i.test(parsed.pathname)) {
+      return true;
+    }
+
+    const lowValuePattern =
+      /\/(wp-json|xmlrpc|feed|rss|search|tag|tags|category|categories|author|authors|comment|comments|cart|checkout|login|log-in|signin|sign-in|signup|sign-up|register|account|privacy|terms|policy|policies|cookie|cookies|share|amp)(\/|$)/i;
+    return lowValuePattern.test(value);
+  } catch {
+    return true;
+  }
+}
+
+function scoreDiscoveredUrl(url: string, baseUrl: string) {
+  const parsed = new URL(url);
+  const base = new URL(baseUrl);
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const value = parsed.pathname.toLowerCase();
+
+  let score = 0;
+
+  if (normalizeDiscoveredUrl(url) === normalizeDiscoveredUrl(baseUrl)) score += 40;
+  if (segments.length >= 2) score += 25;
+  if (segments.length >= 3) score += 10;
+  if (segments.length === 0) score -= 15;
+  if (/\b(20\d{2}|19\d{2})\b/.test(value)) score += 20;
+  if (/\/(blog|articles|posts|notes|docs|guides|essays|writing|news)\b/i.test(value)) score += 15;
+  if (segments.some((segment) => segment.length > 20 || segment.includes("-"))) score += 10;
+  if (parsed.pathname.endsWith("/")) score -= 4;
+  if (normalizeScopedPath(base.pathname) !== "/" && value.startsWith(normalizeScopedPath(base.pathname).toLowerCase())) score += 12;
+
+  return score;
+}
+
+function decodeXmlEntities(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 // ── HTML Utilities ───────────────────────────────────────────

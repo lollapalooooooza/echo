@@ -29,6 +29,42 @@ function firstSentences(text: string, count = 2) {
     .join(" ");
 }
 
+function buildSummaryExcerpt(text: string, maxLength = 5000) {
+  const sections = text
+    .split(/\n{2,}/)
+    .map((section) => section.replace(/\s+/g, " ").trim())
+    .filter((section) => section.length >= 40);
+
+  if (sections.length === 0) {
+    return text.slice(0, maxLength);
+  }
+
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  const candidateIndexes = [
+    0,
+    1,
+    2,
+    Math.floor(sections.length / 3),
+    Math.floor(sections.length / 2),
+    Math.max(sections.length - 2, 0),
+    sections.length - 1,
+  ].filter((index, position, values) => index >= 0 && index < sections.length && values.indexOf(index) === position);
+
+  for (const index of candidateIndexes) {
+    const section = sections[index];
+    if (!section || seen.has(section)) continue;
+
+    selected.push(section);
+    seen.add(section);
+
+    if (selected.join("\n\n").length >= maxLength) break;
+  }
+
+  const excerpt = selected.join("\n\n");
+  return excerpt.length > maxLength ? excerpt.slice(0, maxLength) : excerpt;
+}
+
 function heuristicTopic(text: string, title: string) {
   const combined = `${title} ${text.slice(0, 1800)}`.toLowerCase();
   const topics: Array<[string, RegExp]> = [
@@ -111,7 +147,7 @@ export async function summarizeKnowledgeSource(input: {
             type: input.type,
             sourceUrl: input.sourceUrl || null,
             title: input.title,
-            textExcerpt: input.text.slice(0, 10000),
+            textExcerpt: buildSummaryExcerpt(input.text, 5000),
           }),
         },
       ],
