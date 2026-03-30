@@ -145,6 +145,8 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [activeSignal, setActiveSignal] = useState<Signal | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<ConversationPreview | null>(null);
+  const [activeDigestTab, setActiveDigestTab] = useState<"topics" | "questions" | "moments">("topics");
+  const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/analytics/overview")
@@ -179,6 +181,47 @@ export default function AnalyticsPage() {
       character.recentConversations.some((conversation) => conversationMatchesSignal(conversation, activeSignal))
     );
   });
+  const digestTabs = [
+    {
+      key: "topics" as const,
+      icon: Tags,
+      title: "Keyword Radar",
+      subtitle: "Core themes users keep circling back to",
+      items: digest.topTopics,
+      signalType: "topic" as const,
+    },
+    {
+      key: "questions" as const,
+      icon: MessageCircle,
+      title: "Question Signals",
+      subtitle: "Repeat asks worth turning into stronger flows",
+      items: digest.commonQuestions,
+      signalType: "question" as const,
+    },
+    {
+      key: "moments" as const,
+      icon: BarChart3,
+      title: "Answer Highlights",
+      subtitle: "Memorable responses and notable moments",
+      items: digest.interestingMoments,
+      signalType: "moment" as const,
+    },
+  ];
+  const activeDigest = digestTabs.find((tab) => tab.key === activeDigestTab) || digestTabs[0];
+  const ActiveDigestIcon = activeDigest.icon;
+  const resolvedCharacterId =
+    activeCharacterId && filteredCharacters.some((character) => character.id === activeCharacterId)
+      ? activeCharacterId
+      : filteredCharacters[0]?.id || null;
+  const selectedCharacter =
+    filteredCharacters.find((character) => character.id === resolvedCharacterId) ||
+    filteredCharacters[0] ||
+    null;
+  const selectedCharacterConversations = selectedCharacter
+    ? selectedCharacter.recentConversations.filter((conversation) =>
+        conversationMatchesSignal(conversation, activeSignal)
+      )
+    : [];
 
   return (
     <>
@@ -231,109 +274,167 @@ export default function AnalyticsPage() {
           />
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-          <section className="overflow-hidden rounded-[32px] border border-amber-200/60 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_55%,#fffbeb_100%)] shadow-[0_24px_80px_-48px_rgba(217,119,6,0.55)]">
-            <div className="border-b border-amber-200/60 px-6 py-5">
-              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.24em] text-amber-700/70">
-                <Sparkles className="h-3.5 w-3.5" />
-                User Digest
-              </div>
-              <p className="mt-4 max-w-3xl text-[15px] leading-7 text-slate-800/85">{digest.overview}</p>
-            </div>
-
-            <div className="grid gap-4 p-6 md:grid-cols-3">
-              <InsightCard
-                icon={Tags}
-                title="Keyword Radar"
-                subtitle="Core themes users keep circling back to"
-                items={digest.topTopics}
-                activeSignal={activeSignal}
-                signalType="topic"
-                onSelect={setActiveSignal}
-              />
-              <InsightCard
-                icon={MessageCircle}
-                title="Question Signals"
-                subtitle="Repeat asks worth turning into stronger flows"
-                items={digest.commonQuestions}
-                activeSignal={activeSignal}
-                signalType="question"
-                onSelect={setActiveSignal}
-              />
-              <InsightCard
-                icon={BarChart3}
-                title="Answer Highlights"
-                subtitle="Memorable responses and notable moments"
-                items={digest.interestingMoments}
-                activeSignal={activeSignal}
-                signalType="moment"
-                onSelect={setActiveSignal}
-              />
-            </div>
-          </section>
-
-          <section className="rounded-[32px] border border-slate-200/70 bg-[linear-gradient(180deg,#0f172a_0%,#111827_100%)] p-6 text-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.85)]">
-            <div className="flex items-start justify-between gap-4">
+        <section className="overflow-hidden rounded-[34px] border border-amber-200/60 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_48%,#fffbeb_100%)] shadow-[0_24px_90px_-52px_rgba(217,119,6,0.45)]">
+          <div className="border-b border-amber-200/60 px-6 py-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/45">Recent Conversation Trails</p>
-                <p className="mt-2 text-sm leading-6 text-white/72">
-                  Click any thread to inspect the saved chat history, pulled sources, and the exact user questions that led there.
-                </p>
+                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.24em] text-amber-700/70">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  User Digest
+                </div>
+                <p className="mt-4 max-w-4xl text-[15px] leading-7 text-slate-800/85">{digest.overview}</p>
               </div>
-              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/55">
-                {filteredRecentConversations.length} visible
+              <div className="rounded-full border border-amber-200/80 bg-white/90 px-3 py-1 text-[11px] text-amber-700/80 shadow-sm">
+                {activeDigest.items.length} signals
               </div>
             </div>
 
-            <div className="mt-5 space-y-3">
-              {filteredRecentConversations.length > 0 ? (
-                filteredRecentConversations.slice(0, 5).map((conversation) => (
+            <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
+              {digestTabs.map((tab) => {
+                const Icon = tab.icon;
+                const active = tab.key === activeDigestTab;
+                return (
                   <button
-                    key={conversation.id}
+                    key={tab.key}
                     type="button"
-                    onClick={() => setSelectedConversation(conversation)}
-                    className="group w-full rounded-[24px] border border-white/10 bg-white/[0.04] p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.08]"
+                    onClick={() => setActiveDigestTab(tab.key)}
+                    className={cn(
+                      "inline-flex min-w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-slate-900 text-white"
+                        : "border border-amber-200/80 bg-white/85 text-slate-700 hover:bg-amber-50"
+                    )}
                   >
-                    <div className="flex items-start gap-3">
-                      {conversation.characterAvatarUrl ? (
-                        <img src={conversation.characterAvatarUrl} alt="" className="h-12 w-12 rounded-2xl object-cover" />
-                      ) : (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-sm font-semibold text-white/70">
-                          {conversation.characterName?.[0]}
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="truncate text-[14px] font-semibold text-white">{conversation.title}</p>
-                          <span className="whitespace-nowrap text-[11px] text-white/42">{formatRelativeTime(conversation.startedAt)}</span>
-                        </div>
-                        <p className="mt-1 line-clamp-2 text-[12px] leading-6 text-white/62">{conversation.summary}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {conversation.keywords.slice(0, 3).map((keyword) => (
-                            <span key={keyword} className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100/88">
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between text-[11px] text-white/45">
-                      <span>{conversation.messageCount} messages</span>
-                      <span className="inline-flex items-center gap-1 text-white/72">
-                        Open chat history
-                        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                      </span>
-                    </div>
+                    <Icon className="h-4 w-4" />
+                    {tab.title}
                   </button>
-                ))
-              ) : (
-                <div className="rounded-[24px] border border-dashed border-white/15 px-4 py-10 text-center text-sm text-white/45">
-                  No recent conversations match the current filter.
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-6 p-6 xl:grid-cols-[0.72fr_1.28fr]">
+            <div className="rounded-[28px] border border-amber-200/70 bg-white/90 p-5 shadow-sm">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-amber-700/75">
+                <ActiveDigestIcon className="h-3.5 w-3.5" />
+                {activeDigest.title}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-600">{activeDigest.subtitle}</p>
+              {activeSignal && (
+                <div className="mt-5 rounded-[22px] bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
+                  Current filter: <span className="font-medium">{activeSignal.value}</span>
                 </div>
               )}
+              <div className="mt-5 space-y-3">
+                <MiniMetric label="Visible threads" value={formatNumber(filteredRecentConversations.length)} />
+                <MiniMetric label="Characters matched" value={formatNumber(filteredCharacters.length)} />
+              </div>
             </div>
-          </section>
-        </div>
+
+            <div className="rounded-[28px] border border-amber-200/70 bg-white/80 p-4 shadow-sm">
+              <div className="max-h-[28rem] overflow-y-auto pr-1">
+                {activeDigest.items.length > 0 ? (
+                  <div className="space-y-3">
+                    {activeDigest.items.map((item) => {
+                      const isActive = activeSignal?.value === item && activeSignal.type === activeDigest.signalType;
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() =>
+                            setActiveSignal(isActive ? null : { type: activeDigest.signalType, value: item })
+                          }
+                          className={cn(
+                            "w-full rounded-[24px] border p-4 text-left transition-colors",
+                            isActive
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-amber-200/70 bg-white hover:bg-amber-50"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="text-[15px] font-semibold">{item}</p>
+                              <p className={cn("mt-2 text-[12px] leading-6", isActive ? "text-white/72" : "text-slate-500")}>
+                                Tap to filter both the digest and the saved conversation history around this signal.
+                              </p>
+                            </div>
+                            <ArrowRight className={cn("mt-1 h-4 w-4 flex-shrink-0", isActive ? "text-white/75" : "text-slate-400")} />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-[24px] border border-dashed border-amber-200/80 px-4 py-12 text-center text-sm text-slate-500">
+                    Not enough recent data yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[34px] border border-slate-200/70 bg-[linear-gradient(180deg,#0f172a_0%,#111827_100%)] p-6 text-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.85)]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/45">Recent Conversation Trails</p>
+              <p className="mt-2 text-sm leading-6 text-white/72">
+                Click any thread to inspect the saved chat history, pulled sources, and the exact user questions that led there.
+              </p>
+            </div>
+            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/55">
+              {filteredRecentConversations.length} visible
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 xl:grid-cols-2">
+            {filteredRecentConversations.length > 0 ? (
+              filteredRecentConversations.slice(0, 6).map((conversation) => (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => setSelectedConversation(conversation)}
+                  className="group w-full rounded-[24px] border border-white/10 bg-white/[0.04] p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.08]"
+                >
+                  <div className="flex items-start gap-3">
+                    {conversation.characterAvatarUrl ? (
+                      <img src={conversation.characterAvatarUrl} alt="" className="h-12 w-12 rounded-2xl object-cover" />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-sm font-semibold text-white/70">
+                        {conversation.characterName?.[0]}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-[14px] font-semibold text-white">{conversation.title}</p>
+                        <span className="whitespace-nowrap text-[11px] text-white/42">{formatRelativeTime(conversation.startedAt)}</span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-[12px] leading-6 text-white/62">{conversation.summary}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {conversation.keywords.slice(0, 3).map((keyword) => (
+                          <span key={keyword} className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100/88">
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-[11px] text-white/45">
+                    <span>{conversation.messageCount} messages</span>
+                    <span className="inline-flex items-center gap-1 text-white/72">
+                      Open chat history
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="rounded-[24px] border border-dashed border-white/15 px-4 py-10 text-center text-sm text-white/45 xl:col-span-2">
+                No recent conversations match the current filter.
+              </div>
+            )}
+          </div>
+        </section>
 
         <section className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -355,41 +456,71 @@ export default function AnalyticsPage() {
               No characters match the current analytics filter.
             </div>
           ) : (
-            <div className="grid gap-5 xl:grid-cols-2">
-              {filteredCharacters.map((character) => {
-                const visibleConversations = character.recentConversations.filter((conversation) =>
-                  conversationMatchesSignal(conversation, activeSignal)
-                );
-
-                return (
-                  <article
+            <>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {filteredCharacters.map((character) => (
+                  <button
                     key={character.id}
-                    className="overflow-hidden rounded-[30px] border border-border/70 bg-[linear-gradient(180deg,#ffffff_0%,#fffdf7_100%)] shadow-[0_18px_60px_-46px_rgba(15,23,42,0.5)]"
+                    type="button"
+                    onClick={() => setActiveCharacterId(character.id)}
+                    className={cn(
+                      "inline-flex min-w-fit items-center gap-3 rounded-full border px-4 py-2 transition-colors",
+                      selectedCharacter?.id === character.id
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-border bg-white text-slate-700 hover:bg-neutral-50"
+                    )}
                   >
-                    <div className="border-b border-border/60 px-5 py-5">
-                      <div className="flex items-start gap-4">
-                        {character.avatarUrl ? (
-                          <img src={character.avatarUrl} alt="" className="h-16 w-16 rounded-[22px] bg-muted object-cover shadow-sm" />
-                        ) : (
-                          <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-neutral-100 text-sm font-semibold shadow-sm">
-                            {character.name?.[0]}
+                    {character.avatarUrl ? (
+                      <img src={character.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+                    ) : (
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/10 text-[12px] font-semibold">
+                        {character.name?.[0]}
+                      </span>
+                    )}
+                    <span className="text-sm font-medium">{character.name}</span>
+                  </button>
+                ))}
+              </div>
+
+              {selectedCharacter && (
+                <article className="overflow-hidden rounded-[32px] border border-border/70 bg-[linear-gradient(180deg,#ffffff_0%,#fffdf7_100%)] shadow-[0_18px_60px_-46px_rgba(15,23,42,0.5)]">
+                  <div className="max-h-[44rem] overflow-y-auto">
+                    <div className="border-b border-border/60 px-6 py-6">
+                      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="flex items-start gap-4">
+                          {selectedCharacter.avatarUrl ? (
+                            <img src={selectedCharacter.avatarUrl} alt="" className="h-20 w-20 rounded-[24px] bg-muted object-cover shadow-sm" />
+                          ) : (
+                            <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-neutral-100 text-lg font-semibold shadow-sm">
+                              {selectedCharacter.name?.[0]}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="truncate text-[24px] font-semibold text-slate-900" style={{ fontFamily: "var(--font-display)" }}>
+                                {selectedCharacter.name}
+                              </h3>
+                              <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white/85">
+                                {selectedCharacter.status}
+                              </span>
+                            </div>
+                            <p className="mt-2 max-w-3xl text-[14px] leading-7 text-muted-foreground">{selectedCharacter.bio}</p>
+                            <p className="mt-3 max-w-4xl text-[14px] leading-7 text-slate-800/82">{selectedCharacter.headline}</p>
                           </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="truncate text-[18px] font-semibold text-slate-900">{character.name}</h3>
-                            <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white/85">
-                              {character.status}
-                            </span>
-                          </div>
-                          <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{character.bio}</p>
-                          <p className="mt-3 text-[13px] leading-6 text-slate-800/82">{character.headline}</p>
                         </div>
+
+                        <Link
+                          href={`/creator/character/${selectedCharacter.id}`}
+                          className="inline-flex h-11 items-center gap-2 rounded-full border border-border/60 bg-white px-4 text-sm text-foreground/75 shadow-sm transition-colors hover:bg-neutral-50"
+                        >
+                          Character details
+                          <ArrowRight className="h-4 w-4" />
+                        </Link>
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {character.keywords.length > 0 ? (
-                          character.keywords.map((keyword) => (
+                      <div className="mt-5 flex flex-wrap gap-2">
+                        {selectedCharacter.keywords.length > 0 ? (
+                          selectedCharacter.keywords.map((keyword) => (
                             <button
                               key={keyword}
                               type="button"
@@ -413,37 +544,34 @@ export default function AnalyticsPage() {
                         )}
                       </div>
 
-                      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                        <MiniMetric label="Conversations" value={formatNumber(character.conversationCount)} />
-                        <MiniMetric label="Messages" value={formatNumber(character.messageCount)} />
-                        <MiniMetric label="Last active" value={formatRelativeTime(character.lastActiveAt)} />
+                      <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                        <MiniMetric label="Conversations" value={formatNumber(selectedCharacter.conversationCount)} />
+                        <MiniMetric label="Messages" value={formatNumber(selectedCharacter.messageCount)} />
+                        <MiniMetric label="Last active" value={formatRelativeTime(selectedCharacter.lastActiveAt)} />
+                        <MiniMetric label="Visible chats" value={formatNumber(selectedCharacterConversations.length)} />
                       </div>
                     </div>
 
-                    <div className="grid gap-4 px-5 py-5 md:grid-cols-3">
-                      <CharacterList title="Recent Questions" items={character.recentQuestions} empty="No recent user questions yet." />
-                      <CharacterList title="Best Answer Beats" items={character.interestingMoments} empty="No standout answer moments yet." />
-                      <CharacterSources title="Most Referenced Sources" items={character.topSources} />
+                    <div className="grid gap-4 px-6 py-6 xl:grid-cols-[0.95fr_0.95fr_1.1fr]">
+                      <CharacterList title="Recent Questions" items={selectedCharacter.recentQuestions} empty="No recent user questions yet." />
+                      <CharacterList title="Best Answer Beats" items={selectedCharacter.interestingMoments} empty="No standout answer moments yet." />
+                      <CharacterSources title="Most Referenced Sources" items={selectedCharacter.topSources} />
                     </div>
 
-                    <div className="border-t border-border/60 bg-neutral-50/70 px-5 py-5">
+                    <div className="border-t border-border/60 bg-neutral-50/70 px-6 py-6">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground/75">Recent Chat History</p>
                           <p className="mt-1 text-[12px] text-muted-foreground">Open any saved conversation for the full turn-by-turn transcript.</p>
                         </div>
-                        <Link
-                          href={`/creator/character/${character.id}`}
-                          className="inline-flex h-10 items-center gap-2 rounded-full border border-border/60 bg-white px-4 text-sm text-foreground/75 shadow-sm transition-colors hover:bg-neutral-50"
-                        >
-                          Character details
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
+                        <div className="rounded-full border border-border/60 bg-white px-3 py-1 text-[11px] text-muted-foreground shadow-sm">
+                          {selectedCharacterConversations.length} visible
+                        </div>
                       </div>
 
-                      <div className="mt-4 grid gap-3">
-                        {visibleConversations.length > 0 ? (
-                          visibleConversations.slice(0, 3).map((conversation) => (
+                      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                        {selectedCharacterConversations.length > 0 ? (
+                          selectedCharacterConversations.map((conversation) => (
                             <button
                               key={conversation.id}
                               type="button"
@@ -469,16 +597,16 @@ export default function AnalyticsPage() {
                             </button>
                           ))
                         ) : (
-                          <div className="rounded-[22px] border border-dashed border-border bg-white/70 px-4 py-6 text-sm text-muted-foreground">
+                          <div className="rounded-[22px] border border-dashed border-border bg-white/70 px-4 py-6 text-sm text-muted-foreground xl:col-span-2">
                             No saved conversations match the current filter for this character yet.
                           </div>
                         )}
                       </div>
                     </div>
-                  </article>
-                );
-              })}
-            </div>
+                  </div>
+                </article>
+              )}
+            </>
           )}
         </section>
       </div>
@@ -512,56 +640,6 @@ function MetricCard({
         {value}
       </p>
       <p className="mt-1 text-xs text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-
-function InsightCard({
-  icon: Icon,
-  title,
-  subtitle,
-  items,
-  activeSignal,
-  signalType,
-  onSelect,
-}: {
-  icon: any;
-  title: string;
-  subtitle: string;
-  items: string[];
-  activeSignal: Signal | null;
-  signalType: Signal["type"];
-  onSelect: (signal: Signal | null) => void;
-}) {
-  return (
-    <div className="rounded-[24px] border border-amber-200/60 bg-white/85 p-4 shadow-[0_14px_40px_-36px_rgba(217,119,6,0.55)] backdrop-blur-sm">
-      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-amber-700/75">
-        <Icon className="h-3.5 w-3.5" />
-        {title}
-      </div>
-      <p className="mt-2 text-[12px] leading-5 text-slate-600">{subtitle}</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {items.length > 0 ? (
-          items.map((item) => {
-            const isActive = activeSignal?.value === item && activeSignal.type === signalType;
-            return (
-              <button
-                key={item}
-                type="button"
-                onClick={() => onSelect(isActive ? null : { type: signalType, value: item })}
-                className={cn(
-                  "rounded-full px-3 py-1.5 text-left text-[12px] transition-colors",
-                  isActive ? "bg-slate-900 text-white" : "bg-amber-50 text-slate-700 hover:bg-amber-100"
-                )}
-              >
-                {item}
-              </button>
-            );
-          })
-        ) : (
-          <p className="text-[12px] text-muted-foreground">Not enough recent data yet.</p>
-        )}
-      </div>
     </div>
   );
 }

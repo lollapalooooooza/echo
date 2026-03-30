@@ -83,7 +83,7 @@ export default function CharacterListPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Characters</h1><p className="mt-1 text-sm text-muted-foreground">Create and manage your Echo characters.</p></div>
+        <div><h1 className="text-2xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Characters</h1><p className="mt-1 text-sm text-muted-foreground">Create and manage your EchoNest characters.</p></div>
         <Link href="/creator/character/new" className="flex h-8 items-center gap-1.5 rounded-md bg-foreground px-4 text-[13px] font-medium text-white hover:opacity-80"><Plus className="h-3.5 w-3.5" />New Character</Link>
       </div>
 

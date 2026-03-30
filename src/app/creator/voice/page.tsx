@@ -143,7 +143,7 @@ export default function VoiceLibraryPage() {
     }
   };
 
-  const previewText = "Hi, I am ready to become your character voice inside Echo.";
+  const previewText = "Hi, I am ready to become your character voice inside EchoNest.";
 
   return (
     <div className="space-y-8">

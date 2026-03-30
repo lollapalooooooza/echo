@@ -224,7 +224,7 @@ export default function KnowledgePage() {
 
       {addMode === "website" && (
         <div className="space-y-2 rounded-xl border border-border bg-white p-4">
-          <p className="text-[13px] text-muted-foreground">Enter your site URL. Echo will crawl the pages, then group pages from the same main domain together in your library.</p>
+          <p className="text-[13px] text-muted-foreground">Enter your site URL. EchoNest will crawl the pages, then group pages from the same main domain together in your library.</p>
           <div className="flex items-center gap-2">
             <input autoFocus value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://your-blog.com" className="h-9 flex-1 rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" />
             <button disabled={ingesting || !url.trim()} onClick={() => ingest({ type: "website", url })} className="rounded-md bg-foreground px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{ingesting ? "Crawling…" : "Crawl All Pages"}</button>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  AudioLines,
   BarChart3,
   BookOpen,
   Loader2,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 
 export default function CreatorDashboard() {
   const [sources, setSources] = useState<any[]>([]);
@@ -46,6 +48,7 @@ export default function CreatorDashboard() {
       <section className="rounded-[32px] border border-border/60 bg-[linear-gradient(135deg,rgba(15,23,42,0.97),rgba(30,41,59,0.9))] p-7 text-white shadow-sm">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
+            <BrandMark size="sm" className="text-white" nameClassName="text-white" />
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-200/75">
               <Sparkles className="h-3.5 w-3.5" />
               Creator Dashboard
@@ -65,6 +68,10 @@ export default function CreatorDashboard() {
             <Link href="/creator/knowledge" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white/82 transition-colors hover:bg-white/10">
               <BookOpen className="h-4 w-4" />
               Manage knowledge
+            </Link>
+            <Link href="/creator/voice" className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white/82 transition-colors hover:bg-white/10">
+              <AudioLines className="h-4 w-4" />
+              Voice library
             </Link>
           </div>
         </div>

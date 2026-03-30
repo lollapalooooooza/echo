@@ -306,7 +306,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
   if (loading || !char) return <div className="py-20 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
-  const appUrl = typeof window !== "undefined" ? window.location.origin : "https://your-echo-domain.com";
+  const appUrl = typeof window !== "undefined" ? window.location.origin : "https://your-echonest-domain.com";
   const scriptSnippet = `<script src="${appUrl}/widget.js" data-character-id="${char.id}" data-position="${char.widgetPosition || "bottom-right"}" async></script>`;
   const iframeSnippet = `<iframe src="${appUrl}/embed/${char.id}" width="400" height="600" style="border:none;border-radius:16px" allow="microphone"></iframe>`;
   const runwayAvatarStatus = typeof runwayAvatar?.status === "string" ? runwayAvatar.status.toUpperCase() : "";

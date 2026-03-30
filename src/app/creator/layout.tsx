@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { AudioLines, LayoutDashboard, BookOpen, User, BarChart3, Menu, X, Play, Settings, LogOut } from "lucide-react";
+import { AudioLines, LayoutDashboard, BookOpen, User, BarChart3, Loader2, Menu, X, Play, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/brand-mark";
 
 const nav = [
   { label:"Dashboard", href:"/creator", icon: LayoutDashboard },
@@ -18,14 +19,44 @@ const nav = [
 export default function CreatorLayout({ children }: { children: React.ReactNode }) {
   const [open,setOpen] = useState(false);
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const router = useRouter();
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      const callbackUrl = pathname || "/creator";
+      router.replace(`/auth?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+    }
+  }, [pathname, router, status]);
+
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 rounded-full border border-border bg-white px-5 py-3 shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Loading your EchoNest workspace...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 rounded-full border border-border bg-white px-5 py-3 shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Redirecting to sign in...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {open && <div className="fixed inset-0 z-40 bg-black/20 lg:hidden" onClick={()=>setOpen(false)}/>}
       <aside className={cn("fixed inset-y-0 left-0 z-50 flex w-56 flex-col border-r border-border bg-white transition-transform duration-200 lg:static lg:translate-x-0",open?"translate-x-0":"-translate-x-full")}>
         <div className="flex h-14 items-center justify-between border-b border-border px-4">
-          <Link href="/" className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground"><span className="text-xs font-bold text-white">E</span></div><span className="text-[15px] font-semibold tracking-tight">Echo</span></Link>
+          <BrandMark href="/" size="sm" />
           <button onClick={()=>setOpen(false)} className="lg:hidden"><X className="h-5 w-5 text-muted-foreground"/></button>
         </div>
         <nav className="flex-1 space-y-0.5 px-2 py-3">
@@ -51,7 +82,7 @@ export default function CreatorLayout({ children }: { children: React.ReactNode 
         <header className="flex h-14 items-center border-b border-border bg-white px-4 lg:px-6">
           <button onClick={()=>setOpen(true)} className="lg:hidden"><Menu className="h-5 w-5"/></button>
         </header>
-        <main className="flex-1 overflow-y-auto"><div className="mx-auto max-w-5xl px-4 py-8 lg:px-6">{children}</div></main>
+        <main className="flex-1 overflow-y-auto"><div className="mx-auto max-w-[92rem] px-4 py-8 lg:px-6">{children}</div></main>
       </div>
     </div>
   );

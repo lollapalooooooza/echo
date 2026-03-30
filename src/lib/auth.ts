@@ -48,6 +48,20 @@ export const authOptions: NextAuthOptions = {
 
       return true;
     },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+
+      try {
+        const redirectUrl = new URL(url);
+        if (redirectUrl.origin === baseUrl) {
+          return url;
+        }
+      } catch {
+        // Fall through to the safe default below.
+      }
+
+      return `${baseUrl}/creator`;
+    },
     async jwt({ token, user }) {
       if (user) token.id = user.id;
       return token;

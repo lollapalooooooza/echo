@@ -150,7 +150,7 @@ export default function WidgetPage({ params }: { params: { characterId: string }
             <Send className="h-4 w-4" />
           </button>
         </form>
-        <p className="mt-1.5 text-center text-[9px] text-gray-400">Powered by <a href="/" target="_blank" className="underline">Echo</a></p>
+        <p className="mt-1.5 text-center text-[9px] text-gray-400">Powered by <a href="/" target="_blank" className="underline">EchoNest</a></p>
       </div>
     </div>
   );

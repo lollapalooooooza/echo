@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────────
-// Echo Widget Embed Script
+// EchoNest Widget Embed Script
 // ──────────────────────────────────────────────────────────────
 // Usage on any website:
-//   <script src="https://your-echo-domain.com/widget.js"
+//   <script src="https://your-echonest-domain.com/widget.js"
 //           data-character-id="clx..."
 //           data-position="bottom-right"
 //           data-theme="light"
@@ -16,7 +16,7 @@
   var theme = script.getAttribute("data-theme") || "light";
 
   if (!characterId) {
-    console.error("[Echo Widget] data-character-id is required");
+    console.error("[EchoNest Widget] data-character-id is required");
     return;
   }
 
@@ -25,7 +25,7 @@
 
   // Create launcher button
   var launcher = document.createElement("div");
-  launcher.id = "echo-launcher";
+  launcher.id = "echonest-launcher";
   launcher.innerHTML =
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>';
   launcher.style.cssText =
@@ -39,7 +39,7 @@
 
   // Create iframe container
   var container = document.createElement("div");
-  container.id = "echo-widget";
+  container.id = "echonest-widget";
   container.style.cssText =
     "position:fixed;bottom:88px;" +
     (position === "bottom-left" ? "left:20px;" : "right:20px;") +

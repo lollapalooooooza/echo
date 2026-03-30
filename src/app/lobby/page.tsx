@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowRight, MessageCircle, Loader2, Radio, Search, Sparkles, Users } from "lucide-react";
 import { formatNumber, cn } from "@/lib/utils";
+import { BrandMark } from "@/components/brand-mark";
 
 const toneCfg: Record<string, { label: string; color: string; bg: string }> = {
   friendly: { label: "Friendly", color: "text-emerald-700", bg: "bg-emerald-50" },
@@ -63,12 +64,7 @@ export default function LobbyPage() {
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border/40 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-900">
-              <span className="text-[11px] font-bold text-white">E</span>
-            </div>
-            <span className="text-[15px] font-semibold tracking-tight">Echo</span>
-          </Link>
+          <BrandMark href="/" size="sm" />
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
               <Radio className="h-3 w-3 text-emerald-600" />
@@ -89,7 +85,7 @@ export default function LobbyPage() {
             <span className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">Character Lobby</span>
           </div>
           <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-            Discover AI characters.
+            Discover EchoNest characters.
           </h1>
           <p className="mt-2 text-[15px] text-muted-foreground max-w-lg">
             Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise.

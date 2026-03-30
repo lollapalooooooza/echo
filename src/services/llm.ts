@@ -6,7 +6,7 @@ function client(): Anthropic { if (!_client) _client = new Anthropic({ apiKey: e
 
 export function buildSystemPrompt(name: string, bio: string, tone: string, sources: { title: string; content: string }[]): string {
   const ctx = sources.map((s, i) => `[Source ${i + 1}: "${s.title}"]\n${s.content}`).join("\n\n---\n\n");
-  return `You are "${name}", a knowledge character on Echo.
+  return `You are "${name}", a knowledge character on EchoNest.
 
 BIO: ${bio}
 TONE: ${tone}
