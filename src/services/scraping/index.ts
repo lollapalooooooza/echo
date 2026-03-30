@@ -16,6 +16,7 @@ const DEFAULT_TIMEOUT = 30000;
 const DISCOVERY_TIMEOUT = 12000;
 const MAX_SITEMAP_FETCHES = 12;
 const SITEMAP_CANDIDATE_PATHS = ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml"];
+const FEED_CANDIDATE_PATHS = ["/feed", "/rss", "/rss.xml", "/atom.xml"];
 
 const BROWSER_HEADERS: Record<string, string> = {
   "User-Agent":
@@ -130,13 +131,14 @@ export async function crawlWebsite(
  */
 export async function discoverPages(baseUrl: string, maxPages = 30): Promise<string[]> {
   const discoveryLimit = Math.max(maxPages * 4, 60);
-  const [sitemapUrls, firecrawlUrls, nativeUrls] = await Promise.all([
+  const [sitemapUrls, feedUrls, firecrawlUrls, nativeUrls] = await Promise.all([
     discoverPagesFromSitemaps(baseUrl, discoveryLimit),
+    discoverPagesFromFeeds(baseUrl, discoveryLimit),
     discoverPagesWithFirecrawl(baseUrl, discoveryLimit),
     nativeDiscoverPages(baseUrl, Math.max(maxPages * 2, 20)),
   ]);
 
-  const merged = Array.from(new Set([...sitemapUrls, ...firecrawlUrls, ...nativeUrls]));
+  const merged = Array.from(new Set([...sitemapUrls, ...feedUrls, ...firecrawlUrls, ...nativeUrls]));
   const prioritized = prioritizeDiscoveredUrls(merged, baseUrl).slice(0, maxPages);
 
   if (prioritized.length > 0) {
@@ -342,10 +344,20 @@ async function nativeFetch(url: string, opts: ScrapeOptions, retries = 2): Promi
       const unsupportedShellMessage = getUnsupportedShellPageMessage(url, html);
       if (unsupportedShellMessage) throw new Error(unsupportedShellMessage);
 
-      const title = extractTitleFromHtml(html) || extractTitleFromUrl(url);
-      const content = cleanHtml(html);
-      const headings = extractHeadingsFromHtml(html);
-      const publishDate = extractPublishDate(html);
+      let title = extractTitleFromHtml(html) || extractTitleFromUrl(url);
+      let content = cleanHtml(html);
+      let headings = extractHeadingsFromHtml(html);
+      let publishDate = extractPublishDate(html);
+
+      if (content.length < 200) {
+        const fallback = extractStructuredArticleFallback(url, html);
+        if (fallback?.content && fallback.content.length > content.length) {
+          title = fallback.title || title;
+          content = fallback.content;
+          headings = fallback.headings.length > 0 ? fallback.headings : headings;
+          publishDate = fallback.publishDate || publishDate;
+        }
+      }
 
       if (content.length < 50) throw new Error("Not enough text content after cleaning");
 
@@ -504,6 +516,23 @@ async function discoverPagesFromSitemaps(baseUrl: string, maxPages: number): Pro
   return prioritizeDiscoveredUrls(Array.from(discovered), baseUrl).slice(0, maxPages);
 }
 
+async function discoverPagesFromFeeds(baseUrl: string, maxPages: number): Promise<string[]> {
+  const feedUrls = await getCandidateFeeds(baseUrl);
+  if (feedUrls.length === 0) return [];
+
+  const discovered = new Set<string>();
+  const results = await Promise.all(feedUrls.slice(0, 6).map((feedUrl) => fetchFeedUrls(feedUrl)));
+  for (const urls of results) {
+    for (const url of urls) {
+      if (!shouldSkipDiscoveredUrl(url, baseUrl)) {
+        discovered.add(normalizeDiscoveredUrl(url));
+      }
+    }
+  }
+
+  return prioritizeDiscoveredUrls(Array.from(discovered), baseUrl).slice(0, maxPages);
+}
+
 async function getCandidateSitemaps(baseUrl: string): Promise<string[]> {
   const base = new URL(baseUrl);
   const candidates = new Set<string>(
@@ -537,6 +566,39 @@ async function getCandidateSitemaps(baseUrl: string): Promise<string[]> {
   return Array.from(candidates);
 }
 
+async function getCandidateFeeds(baseUrl: string): Promise<string[]> {
+  const base = new URL(baseUrl);
+  const candidates = new Set<string>(FEED_CANDIDATE_PATHS.map((pathname) => new URL(pathname, base.origin).toString()));
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT);
+    const res = await fetch(baseUrl, {
+      headers: BROWSER_HEADERS,
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const html = await res.text();
+      for (const match of Array.from(
+        html.matchAll(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["'][^>]*>/gi)
+      )) {
+        try {
+          candidates.add(normalizeDiscoveredUrl(new URL(match[1], res.url || base.origin).toString()));
+        } catch {
+          /* ignore invalid feed URLs */
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[Scrape] Feed discovery failed:", e);
+  }
+
+  return Array.from(candidates);
+}
+
 async function fetchSitemapUrls(sitemapUrl: string): Promise<{ nestedSitemaps: string[]; pageUrls: string[] }> {
   try {
     const controller = new AbortController();
@@ -565,6 +627,36 @@ async function fetchSitemapUrls(sitemapUrl: string): Promise<{ nestedSitemaps: s
   } catch (e) {
     console.warn(`[Scrape] Sitemap fetch failed for ${sitemapUrl}:`, e);
     return { nestedSitemaps: [], pageUrls: [] };
+  }
+}
+
+async function fetchFeedUrls(feedUrl: string): Promise<string[]> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT);
+    const res = await fetch(feedUrl, {
+      headers: {
+        ...BROWSER_HEADERS,
+        Accept: "application/rss+xml,application/atom+xml,application/xml,text/xml,text/html;q=0.8,*/*;q=0.5",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return [];
+
+    const xml = await res.text();
+    const rssLinks = Array.from(xml.matchAll(/<item[\s\S]*?<link>([\s\S]*?)<\/link>/gi)).map((match) =>
+      decodeXmlEntities(match[1]).trim()
+    );
+    const atomLinks = Array.from(
+      xml.matchAll(/<entry[\s\S]*?<link[^>]+href=["']([^"']+)["'][^>]*\/?>[\s\S]*?<\/entry>/gi)
+    ).map((match) => decodeXmlEntities(match[1]).trim());
+
+    return [...rssLinks, ...atomLinks].filter(Boolean);
+  } catch (e) {
+    console.warn(`[Scrape] Feed fetch failed for ${feedUrl}:`, e);
+    return [];
   }
 }
 
@@ -671,6 +763,183 @@ function decodeXmlEntities(value: string) {
 }
 
 // ── HTML Utilities ───────────────────────────────────────────
+
+function extractStructuredArticleFallback(url: string, html: string) {
+  return extractSubstackStructuredFallback(url, html) || extractJsonLdArticleFallback(html);
+}
+
+function extractSubstackStructuredFallback(url: string, html: string) {
+  if (!/(substack|pencraft|truncated_body_text|body_html)/i.test(`${url} ${html.slice(0, 5000)}`)) {
+    return null;
+  }
+
+  const bodyHtml = extractJsonStringField(html, "body_html");
+  const truncatedBodyText = extractJsonStringField(html, "truncated_body_text");
+  const subtitle = extractJsonStringField(html, "subtitle");
+  const postDate = extractJsonStringField(html, "post_date");
+  const fallbackTitle = extractJsonStringField(html, "title") || extractTitleFromHtml(html) || extractTitleFromUrl(url);
+
+  const extractedContent = bodyHtml
+    ? cleanHtml(bodyHtml)
+    : [fallbackTitle, subtitle, truncatedBodyText].filter(Boolean).join("\n\n").trim();
+
+  if (extractedContent.length < 50) return null;
+
+  const headings = [
+    fallbackTitle ? { level: 1, text: fallbackTitle.slice(0, 200) } : null,
+    subtitle ? { level: 2, text: subtitle.slice(0, 200) } : null,
+  ].filter((heading): heading is { level: number; text: string } => !!heading);
+
+  return {
+    title: fallbackTitle,
+    content: extractedContent,
+    headings,
+    publishDate: postDate || null,
+  };
+}
+
+function extractJsonLdArticleFallback(html: string) {
+  const matches = Array.from(
+    html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)
+  );
+
+  for (const match of matches) {
+    const parsed = parseJsonBlock(match[1]);
+    if (!parsed) continue;
+
+    const article = findArticleLikeNode(parsed);
+    if (!article) continue;
+
+    const rawBody =
+      (typeof article.articleBody === "string" && article.articleBody) ||
+      (typeof article.description === "string" && article.description) ||
+      "";
+    const title = typeof article.headline === "string" ? article.headline : null;
+    const publishDate = typeof article.datePublished === "string" ? article.datePublished : null;
+    const content = rawBody.replace(/\s+/g, " ").trim();
+
+    if (content.length < 50) continue;
+
+    return {
+      title,
+      content,
+      headings: title ? [{ level: 1, text: title.slice(0, 200) }] : [],
+      publishDate,
+    };
+  }
+
+  return null;
+}
+
+function extractJsonStringField(html: string, fieldName: string) {
+  const escapedValue = extractEscapedJsonStringField(html, fieldName);
+  if (escapedValue !== undefined) return escapedValue;
+
+  const plainValue = extractPlainJsonStringField(html, fieldName);
+  if (plainValue !== undefined) return plainValue;
+
+  return null;
+}
+
+function extractEscapedJsonStringField(html: string, fieldName: string) {
+  const prefix = `\\"${fieldName}\\":`;
+  const start = html.indexOf(prefix);
+  if (start === -1) return undefined;
+
+  const valueStart = start + prefix.length;
+  if (html.startsWith("null", valueStart)) return null;
+  if (!html.startsWith('\\"', valueStart)) return undefined;
+
+  let cursor = valueStart + 2;
+  while (cursor < html.length) {
+    const nextQuote = html.indexOf('\\"', cursor);
+    if (nextQuote === -1) break;
+
+    const trailing = html[nextQuote + 2];
+    if (trailing === "," || trailing === "}" || trailing === "]") {
+      try {
+        return JSON.parse(`"${html.slice(valueStart + 2, nextQuote)}"`) as string;
+      } catch {
+        return null;
+      }
+    }
+
+    cursor = nextQuote + 2;
+  }
+
+  return undefined;
+}
+
+function extractPlainJsonStringField(html: string, fieldName: string) {
+  const prefix = `"${fieldName}":`;
+  const start = html.indexOf(prefix);
+  if (start === -1) return undefined;
+
+  const valueStart = start + prefix.length;
+  if (html.startsWith("null", valueStart)) return null;
+  if (html[valueStart] !== '"') return undefined;
+
+  let cursor = valueStart + 1;
+  let escaping = false;
+  while (cursor < html.length) {
+    const char = html[cursor];
+    if (char === '"' && !escaping) {
+      try {
+        return JSON.parse(html.slice(valueStart, cursor + 1)) as string;
+      } catch {
+        return null;
+      }
+    }
+
+    if (char === "\\" && !escaping) {
+      escaping = true;
+    } else {
+      escaping = false;
+    }
+
+    cursor += 1;
+  }
+
+  return undefined;
+}
+
+function parseJsonBlock(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function findArticleLikeNode(value: unknown): Record<string, any> | null {
+  if (!value || typeof value !== "object") return null;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findArticleLikeNode(item);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const record = value as Record<string, any>;
+  const typeValue = record["@type"];
+  if (
+    typeValue === "Article" ||
+    typeValue === "NewsArticle" ||
+    typeValue === "BlogPosting" ||
+    (Array.isArray(typeValue) && typeValue.some((entry) => ["Article", "NewsArticle", "BlogPosting"].includes(entry)))
+  ) {
+    return record;
+  }
+
+  for (const nested of Object.values(record)) {
+    const found = findArticleLikeNode(nested);
+    if (found) return found;
+  }
+
+  return null;
+}
 
 function cleanHtml(html: string): string {
   let content = html;
