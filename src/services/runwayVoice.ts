@@ -99,6 +99,31 @@ function containsLikelyHumanName(sentence: string) {
   return /\b(?:mr|mrs|ms|dr|prof)\.?\s+[A-Z][a-z]+|\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/.test(sentence);
 }
 
+const RUNWAY_TONE_ADJECTIVES: Record<string, string[]> = {
+  friendly: ["warm", "approachable", "encouraging", "clear"],
+  professional: ["polished", "confident", "reliable", "clear"],
+  casual: ["relaxed", "natural", "easygoing", "direct"],
+  witty: ["witty", "playful", "clever", "quick"],
+  academic: ["thoughtful", "analytical", "precise", "articulate"],
+  storyteller: ["imaginative", "vivid", "expressive", "engaging"],
+};
+
+const RUNWAY_BIO_ADJECTIVE_HINTS: Array<[RegExp, string[]]> = [
+  [/\b(friend|friendly|kind|welcoming|supportive|helpful)\b/gi, ["warm", "kind", "supportive"]],
+  [/\b(calm|gentle|patient|soft|soothing)\b/gi, ["calm", "gentle", "patient"]],
+  [/\b(witty|funny|humor|humorous|playful)\b/gi, ["witty", "playful", "lively"]],
+  [/\b(creative|imaginative|inventive|artistic)\b/gi, ["creative", "imaginative", "inventive"]],
+  [/\b(story|storyteller|narrative|cinematic)\b/gi, ["expressive", "vivid", "narrative"]],
+  [/\b(professional|executive|businesslike|corporate)\b/gi, ["professional", "polished", "confident"]],
+  [/\b(academic|scholarly|research|professor|teacher|educator)\b/gi, ["analytical", "thoughtful", "knowledgeable"]],
+  [/\b(technical|engineer|engineering|developer|programming)\b/gi, ["technical", "precise", "logical"]],
+  [/\b(curious|inquisitive|exploratory)\b/gi, ["curious", "inquisitive"]],
+  [/\b(energetic|upbeat|high-energy|dynamic)\b/gi, ["energetic", "upbeat", "dynamic"]],
+  [/\b(confident|bold|assertive)\b/gi, ["confident", "bold", "assured"]],
+  [/\b(insightful|strategic|thoughtful|wise|reflective)\b/gi, ["insightful", "strategic", "reflective"]],
+  [/\b(concise|clear|direct|straightforward)\b/gi, ["clear", "concise", "direct"]],
+];
+
 function inferGenderHint(voiceName: string) {
   if (!voiceName) return null;
   if (MALE_NAME_HINTS.some((hint) => voiceName.includes(hint))) return "male";
@@ -197,17 +222,34 @@ export function buildRunwayPersonality(input: {
   tone?: string | null;
 }) {
   const tone = normalize(input.tone) || "friendly";
-  const sanitizedBio = sanitizeRunwayBio(input.bio || "", input.name || "");
+  const name = input.name?.trim() || "";
+  const bio = sanitizeRunwayBio(input.bio || "", name).toLowerCase();
+  const adjectives: string[] = [];
+  const seen = new Set<string>();
 
-  const lines = [
-    `Adopt a ${tone} conversational style.`,
-    sanitizedBio
-      ? `Core personality and expertise: ${sanitizedBio}.`
-      : "Be concise, clear, and conversational.",
-    "Stay grounded in the attached knowledge and current conversation context.",
-    "Do not claim any real-world human identity or introduce yourself with a personal name.",
-    "If you do not know something, say so directly instead of inventing details.",
-  ];
+  const addAdjective = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) return;
+    if (!/^[a-z][a-z-]*$/.test(normalized)) return;
+    seen.add(normalized);
+    adjectives.push(normalized);
+  };
 
-  return lines.join(" ");
+  for (const adjective of RUNWAY_TONE_ADJECTIVES[tone] || RUNWAY_TONE_ADJECTIVES.friendly) {
+    addAdjective(adjective);
+  }
+
+  for (const [pattern, matches] of RUNWAY_BIO_ADJECTIVE_HINTS) {
+    pattern.lastIndex = 0;
+    if (!pattern.test(bio)) continue;
+    for (const adjective of matches) {
+      addAdjective(adjective);
+    }
+  }
+
+  if (adjectives.length < 4) {
+    ["grounded", "clear", "natural", "engaging"].forEach(addAdjective);
+  }
+
+  return adjectives.slice(0, 8).join(", ");
 }
