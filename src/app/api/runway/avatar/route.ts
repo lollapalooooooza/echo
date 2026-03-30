@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { createRunwayAvatar, getRunwayAvatar } from "@/services/runwayAvatar";
 import { getLinkedSourceIds } from "@/services/character";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
+import { inferRunwayLiveVoicePreset } from "@/services/runwayVoice";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "characterId required" }, { status: 400 });
   }
 
-  const character = await db.character.findUnique({ where: { id: characterId } });
+  const character = await db.character.findUnique({
+    where: { id: characterId },
+    include: { voice: true },
+  });
   if (!character || character.userId !== userId) {
     return NextResponse.json({ error: "Character not found" }, { status: 404 });
   }
@@ -80,6 +84,12 @@ export async function POST(req: NextRequest) {
       greeting: character.greeting,
       personalityTone: character.personalityTone,
       avatarUrl: character.avatarUrl.trim(),
+      voicePreset: inferRunwayLiveVoicePreset({
+        voiceId: character.voice?.elevenLabsVoiceId,
+        voiceName: character.voice?.name,
+        tone: character.personalityTone,
+        bio: character.bio,
+      }),
     });
 
     const runwayCharacterId = (avatar as any)?.id as string | undefined;

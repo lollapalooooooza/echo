@@ -109,7 +109,7 @@ export function VoiceSelectionPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[13px] text-muted-foreground">
-            Pick the voice your character should speak with. Custom voices are managed from the voice library.
+            Pick the voice your character should speak with. EchoNest uses this exact voice for speech synthesis and widget playback, while Runway live sessions auto-match the closest compatible live voice instead of silently falling back to a random default.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

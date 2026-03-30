@@ -8,9 +8,10 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
-import { createRunwayAvatar, DEFAULT_RUNWAY_LIVE_VOICE_PRESET } from "@/services/runwayAvatar";
+import { createRunwayAvatar, updateRunwayAvatar } from "@/services/runwayAvatar";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 import { PRESET_VOICES } from "@/services/voiceService";
+import { DEFAULT_RUNWAY_LIVE_VOICE_PRESET, inferRunwayLiveVoicePreset } from "@/services/runwayVoice";
 
 // ── Runway API Configuration ─────────────────────────────────
 
@@ -59,9 +60,11 @@ export interface CreateCharacterInput {
   widgetPosition?: string;
 }
 
-async function resolveVoiceDbId(userId: string, voiceId?: string, voiceName?: string) {
+async function resolveVoiceSelection(userId: string, voiceId?: string, voiceName?: string) {
   const selectedVoiceId = voiceId?.trim();
-  if (!selectedVoiceId) return null;
+  if (!selectedVoiceId) {
+    return { voiceDbId: null, voice: null };
+  }
 
   const ownedVoice =
     (await db.voice.findFirst({
@@ -72,11 +75,11 @@ async function resolveVoiceDbId(userId: string, voiceId?: string, voiceName?: st
           { elevenLabsVoiceId: selectedVoiceId },
         ],
       },
-      select: { id: true },
+      select: { id: true, name: true, elevenLabsVoiceId: true, isCloned: true },
     })) || null;
 
   if (ownedVoice) {
-    return ownedVoice.id;
+    return { voiceDbId: ownedVoice.id, voice: ownedVoice };
   }
 
   const preset = PRESET_VOICES.find((item) => item.id === selectedVoiceId);
@@ -100,7 +103,7 @@ async function resolveVoiceDbId(userId: string, voiceId?: string, voiceName?: st
     },
   });
 
-  return voice.id;
+  return { voiceDbId: voice.id, voice };
 }
 
 /**
@@ -117,7 +120,16 @@ export async function createCharacter(input: CreateCharacterInput) {
   const existing = await db.character.findUnique({ where: { slug } });
   if (existing) throw new Error("A character with this name already exists");
 
-  const voiceDbId = await resolveVoiceDbId(input.userId, input.voiceId, input.voiceName);
+  const { voiceDbId, voice } = await resolveVoiceSelection(input.userId, input.voiceId, input.voiceName);
+  const runwayVoicePreset =
+    input.runwayVoicePreset ||
+    inferRunwayLiveVoicePreset({
+      voiceId: voice?.elevenLabsVoiceId || input.voiceId,
+      voiceName: voice?.name || input.voiceName,
+      tone: input.personalityTone,
+      bio: input.bio,
+    }) ||
+    DEFAULT_RUNWAY_LIVE_VOICE_PRESET;
 
   // Create Runway avatar if needed
   let runwayCharacterId = input.runwayCharacterId?.trim() || null;
@@ -129,7 +141,7 @@ export async function createCharacter(input: CreateCharacterInput) {
         greeting: input.greeting,
         personalityTone: input.personalityTone,
         avatarUrl: input.avatarUrl,
-        voicePreset: input.runwayVoicePreset || DEFAULT_RUNWAY_LIVE_VOICE_PRESET,
+        voicePreset: runwayVoicePreset,
       });
       runwayCharacterId = avatar.id;
     } catch (err: any) {
@@ -184,13 +196,29 @@ export async function updateCharacter(
   userId: string,
   updates: Partial<CreateCharacterInput>
 ) {
-  const char = await db.character.findUnique({ where: { id: characterId } });
+  const char = await db.character.findUnique({
+    where: { id: characterId },
+    include: { voice: true },
+  });
   if (!char || char.userId !== userId) throw new Error("Character not found");
 
-  const voiceDbId =
+  const resolvedVoice =
     updates.voiceId === undefined
-      ? undefined
-      : await resolveVoiceDbId(userId, updates.voiceId, updates.voiceName);
+      ? { voiceDbId: undefined, voice: char.voice || null }
+      : await resolveVoiceSelection(userId, updates.voiceId, updates.voiceName);
+
+  const runwayVoicePreset =
+    inferRunwayLiveVoicePreset({
+      voiceId:
+        resolvedVoice.voice?.elevenLabsVoiceId ||
+        (updates.voiceId === undefined ? char.voice?.elevenLabsVoiceId : updates.voiceId),
+      voiceName:
+        resolvedVoice.voice?.name ||
+        updates.voiceName ||
+        char.voice?.name,
+      tone: updates.personalityTone ?? char.personalityTone,
+      bio: updates.bio ?? char.bio,
+    }) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET;
 
   const updated = await db.character.update({
     where: { id: characterId },
@@ -200,7 +228,7 @@ export async function updateCharacter(
       greeting: updates.greeting,
       personalityTone: updates.personalityTone,
       avatarUrl: updates.avatarUrl === undefined ? undefined : updates.avatarUrl?.trim() || null,
-      voiceId: voiceDbId,
+      voiceId: resolvedVoice.voiceDbId,
       runwayCharacterId: updates.runwayCharacterId === undefined ? undefined : updates.runwayCharacterId?.trim() || null,
       suggestedQuestions: updates.suggestedQuestions,
       status: updates.publish !== undefined ? (updates.publish ? "PUBLISHED" : "DRAFT") : undefined,
@@ -215,6 +243,31 @@ export async function updateCharacter(
     await (db as any).characterKnowledgeSource.deleteMany({ where: { characterId } });
     if (updates.knowledgeSourceIds.length > 0) {
       await linkKnowledgeSources(characterId, updates.knowledgeSourceIds);
+    }
+  }
+
+  const shouldSyncRunwayAvatar =
+    updates.name !== undefined ||
+    updates.bio !== undefined ||
+    updates.greeting !== undefined ||
+    updates.personalityTone !== undefined ||
+    updates.avatarUrl !== undefined ||
+    updates.voiceId !== undefined ||
+    updates.voiceName !== undefined;
+
+  if (updated.runwayCharacterId && env.RUNWAY_API_KEY && shouldSyncRunwayAvatar) {
+    try {
+      await updateRunwayAvatar(updated.runwayCharacterId, {
+        name: updated.name,
+        bio: updated.bio,
+        greeting: updated.greeting,
+        personalityTone: updated.personalityTone,
+        avatarUrl: updated.avatarUrl || undefined,
+        voicePreset: runwayVoicePreset,
+      });
+      console.log(`[Character] Synced Runway avatar profile for ${updated.runwayCharacterId}`);
+    } catch (err: any) {
+      console.error("[Character] Runway avatar sync failed after update:", err.message);
     }
   }
 
@@ -402,9 +455,9 @@ function buildPersonalityInstructions(
   tone: string,
   greeting: string
 ): string {
-  return `You are ${name}. ${bio}
+  return `Adopt a ${tone} speaking style. ${bio}
 
-Your speaking style is ${tone}. When a conversation begins, greet with: "${greeting}"
+When a conversation begins, greet with: "${greeting}"
 
-Stay in character at all times. Speak naturally as if in a live video conversation.`;
+Stay grounded in the requested persona without using any personal name. Speak naturally as if in a live video conversation.`;
 }
