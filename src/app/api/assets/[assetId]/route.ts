@@ -12,11 +12,13 @@ export async function GET(_: Request, { params }: { params: { assetId: string } 
     return NextResponse.json({ error: "Asset not found" }, { status: 404 });
   }
 
-  const body = Uint8Array.from(asset.data).buffer;
+  const bytes = Uint8Array.from(asset.data);
+  const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 
   return new Response(body, {
     headers: {
       "Content-Type": asset.contentType,
+      "Content-Length": String(bytes.byteLength),
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });
