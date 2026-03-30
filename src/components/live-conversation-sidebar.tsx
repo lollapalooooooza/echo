@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AudioLines,
   BookOpen,
   ChevronRight,
   ExternalLink,
   FileText,
   Loader2,
-  Mic,
-  MicOff,
+  Pause,
+  Play,
   Send,
   Sparkles,
 } from "lucide-react";
@@ -52,6 +53,43 @@ function readSseBlocks(buffer: string) {
   };
 }
 
+function normalizeTranscript(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeForSimilarity(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isLikelyEcho(candidate: string, messages: SidebarMessage[]) {
+  const normalizedCandidate = normalizeForSimilarity(candidate);
+  if (normalizedCandidate.length < 24) return false;
+
+  const assistantTurns = messages
+    .filter((message) => message.role === "assistant" && !message.streaming)
+    .slice(-2)
+    .map((message) => normalizeForSimilarity(message.content))
+    .filter(Boolean);
+
+  return assistantTurns.some((assistantText) => {
+    if (!assistantText) return false;
+    if (assistantText.includes(normalizedCandidate) || normalizedCandidate.includes(assistantText)) {
+      return true;
+    }
+
+    const candidateWords = new Set(normalizedCandidate.split(" ").filter(Boolean));
+    const assistantWords = new Set(assistantText.split(" ").filter(Boolean));
+    const overlap = Array.from(candidateWords).filter((word) => assistantWords.has(word)).length;
+    const ratio = overlap / Math.max(candidateWords.size, 1);
+
+    return ratio >= 0.82 && Math.abs(candidateWords.size - assistantWords.size) <= 6;
+  });
+}
+
 export function LiveConversationSidebar({ character }: { character: any }) {
   const [messages, setMessages] = useState<SidebarMessage[]>([]);
   const [input, setInput] = useState("");
@@ -61,21 +99,30 @@ export function LiveConversationSidebar({ character }: { character: any }) {
   const [listening, setListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [captureError, setCaptureError] = useState("");
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
 
   const queueRef = useRef<string[]>([]);
   const processingRef = useRef(false);
   const recognitionRef = useRef<RecognitionInstance | null>(null);
-  const capturedSegmentsRef = useRef<string[]>([]);
+  const pendingSegmentsRef = useRef<string[]>([]);
+  const flushTimerRef = useRef<number | null>(null);
+  const restartTimerRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<SidebarMessage[]>([]);
   const conversationIdRef = useRef<string | null>(null);
+  const loadingRef = useRef(false);
+  const autoCaptureEnabledRef = useRef(true);
+  const shouldAutoRestartRef = useRef(true);
   const supportsSpeech = useMemo(
     () => typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window),
     []
   );
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const container = scrollRef.current;
+    if (!container) return;
+
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages, interimTranscript]);
 
   useEffect(() => {
@@ -85,6 +132,28 @@ export function LiveConversationSidebar({ character }: { character: any }) {
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    autoCaptureEnabledRef.current = autoCaptureEnabled;
+  }, [autoCaptureEnabled]);
+
+  const clearFlushTimer = useCallback(() => {
+    if (flushTimerRef.current) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+  }, []);
+
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+  }, []);
 
   const processQueue = useCallback(async () => {
     if (processingRef.current || queueRef.current.length === 0) return;
@@ -208,7 +277,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
 
   const enqueueMessage = useCallback(
     (value: string) => {
-      const trimmed = value.replace(/\s+/g, " ").trim();
+      const trimmed = normalizeTranscript(value);
       if (!trimmed) return;
       queueRef.current.push(trimmed);
       setInput("");
@@ -217,86 +286,160 @@ export function LiveConversationSidebar({ character }: { character: any }) {
     [processQueue]
   );
 
-  const stopRecognition = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setListening(false);
-  }, []);
+  const flushCapturedTurn = useCallback(() => {
+    clearFlushTimer();
+
+    const finalized = normalizeTranscript(pendingSegmentsRef.current.join(" "));
+    pendingSegmentsRef.current = [];
+    setInterimTranscript("");
+
+    if (!finalized || loadingRef.current) return;
+    if (isLikelyEcho(finalized, messagesRef.current)) {
+      return;
+    }
+
+    enqueueMessage(finalized);
+  }, [clearFlushTimer, enqueueMessage]);
+
+  const stopRecognition = useCallback(
+    (restart = false) => {
+      shouldAutoRestartRef.current = restart;
+      clearRestartTimer();
+      clearFlushTimer();
+
+      const recognition = recognitionRef.current;
+      recognitionRef.current = null;
+
+      if (recognition) {
+        recognition.stop();
+      }
+
+      setListening(false);
+      setInterimTranscript("");
+    },
+    [clearFlushTimer, clearRestartTimer]
+  );
 
   const startRecognition = useCallback(() => {
-    if (!supportsSpeech || recognitionRef.current || loading) return;
+    if (!supportsSpeech || recognitionRef.current || !autoCaptureEnabledRef.current || loadingRef.current) return;
 
     const RecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!RecognitionCtor) return;
 
+    clearRestartTimer();
+    setCaptureError("");
+    shouldAutoRestartRef.current = true;
+
     const recognition: RecognitionInstance = new RecognitionCtor();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    capturedSegmentsRef.current = [];
-    setInterimTranscript("");
 
     recognition.onresult = (event: any) => {
       let interim = "";
+      let receivedFinalSegment = false;
 
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const transcript = event.results[i][0]?.transcript?.trim();
         if (!transcript) continue;
 
         if (event.results[i].isFinal) {
-          capturedSegmentsRef.current.push(transcript);
+          pendingSegmentsRef.current.push(transcript);
+          receivedFinalSegment = true;
         } else {
           interim += `${transcript} `;
         }
       }
 
-      setInterimTranscript([...capturedSegmentsRef.current, interim.trim()].filter(Boolean).join(" "));
+      setInterimTranscript(
+        [...pendingSegmentsRef.current, interim.trim()].filter(Boolean).join(" ")
+      );
+
+      if (receivedFinalSegment) {
+        clearFlushTimer();
+        flushTimerRef.current = window.setTimeout(() => {
+          flushCapturedTurn();
+        }, 1200);
+      }
+    };
+
+    recognition.onerror = (event?: any) => {
+      if (event?.error === "aborted" || event?.error === "no-speech") return;
+
+      setCaptureError("Auto voice capture paused in this tab. You can still type below, or tap resume to retry.");
+      pendingSegmentsRef.current = [];
+      setInterimTranscript("");
+      setListening(false);
+      recognitionRef.current = null;
     };
 
     recognition.onend = () => {
       recognitionRef.current = null;
       setListening(false);
-      const finalized = capturedSegmentsRef.current.join(" ").replace(/\s+/g, " ").trim();
-      capturedSegmentsRef.current = [];
-      setInterimTranscript("");
-      if (finalized) {
-        enqueueMessage(finalized);
-      }
-    };
+      clearFlushTimer();
 
-    recognition.onerror = (event?: any) => {
-      if (event?.error === "aborted") return;
-      setCaptureError("Voice capture stopped before your turn finished. You can type instead or try recording again.");
-      capturedSegmentsRef.current = [];
-      recognitionRef.current = null;
-      setListening(false);
-      setInterimTranscript("");
+      if (pendingSegmentsRef.current.length > 0) {
+        flushCapturedTurn();
+      } else {
+        setInterimTranscript("");
+      }
+
+      if (shouldAutoRestartRef.current && autoCaptureEnabledRef.current && !loadingRef.current) {
+        restartTimerRef.current = window.setTimeout(() => {
+          startRecognition();
+        }, 450);
+      }
     };
 
     try {
       recognition.start();
       recognitionRef.current = recognition;
       setListening(true);
-      setCaptureError("");
     } catch (error) {
       console.error("[LiveConversationSidebar] Speech start failed:", error);
-      setCaptureError("Voice capture could not start in this browser tab.");
-      capturedSegmentsRef.current = [];
+      setCaptureError("Auto voice capture could not start in this browser tab.");
       recognitionRef.current = null;
       setListening(false);
     }
-  }, [enqueueMessage, loading, supportsSpeech]);
+  }, [clearFlushTimer, clearRestartTimer, flushCapturedTurn, supportsSpeech]);
 
   useEffect(() => {
-    if (loading && recognitionRef.current) {
-      stopRecognition();
-    }
-  }, [loading, stopRecognition]);
+    if (!supportsSpeech) return;
 
-  useEffect(() => () => stopRecognition(), [stopRecognition]);
+    if (!autoCaptureEnabled || loading) {
+      if (loading) {
+        flushCapturedTurn();
+      }
+      stopRecognition(false);
+      return;
+    }
+
+    startRecognition();
+  }, [autoCaptureEnabled, flushCapturedTurn, loading, startRecognition, stopRecognition, supportsSpeech]);
+
+  useEffect(
+    () => () => {
+      shouldAutoRestartRef.current = false;
+      clearFlushTimer();
+      clearRestartTimer();
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+    },
+    [clearFlushTimer, clearRestartTimer]
+  );
+
+  const captureStatusLabel = !supportsSpeech
+    ? "Voice auto-capture unavailable in this browser"
+    : !autoCaptureEnabled
+      ? "Auto voice capture paused"
+      : loading
+        ? `${character.name} is replying`
+        : listening
+          ? "Auto listening for your next turn"
+          : "Reconnecting to your mic";
 
   return (
-    <aside className="flex h-full min-h-[32rem] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-black/30 backdrop-blur-sm">
+    <aside className="flex h-full min-h-[32rem] max-h-[calc(100vh-12rem)] min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-black/30 backdrop-blur-sm lg:min-h-0 lg:max-h-full">
       <div className="border-b border-white/10 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -305,7 +448,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
               Dual-Channel Transcript
             </div>
             <p className="mt-2 text-sm leading-relaxed text-white/72">
-              User turns and character turns now stay in separate lanes. We only record your side when you press the mic, then stream the character reply back into its own thread.
+              This panel now auto-listens for your turn, pauses while the character answers, and keeps both sides in separate lanes so the conversation log stays readable.
             </p>
           </div>
         </div>
@@ -313,44 +456,33 @@ export function LiveConversationSidebar({ character }: { character: any }) {
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              if (listening) {
-                stopRecognition();
-              } else {
-                startRecognition();
-              }
-            }}
-            disabled={!supportsSpeech || loading}
+            onClick={() => setAutoCaptureEnabled((current) => !current)}
+            disabled={!supportsSpeech}
             className={cn(
               "inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[12px] font-medium transition-colors",
-              listening
+              autoCaptureEnabled
                 ? "bg-emerald-400/15 text-emerald-100"
                 : "bg-white/5 text-white/60 hover:bg-white/10",
-              (!supportsSpeech || loading) && "cursor-not-allowed opacity-50"
+              !supportsSpeech && "cursor-not-allowed opacity-50"
             )}
           >
-            {listening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-            {listening ? "Stop recording your turn" : "Record your turn"}
+            {autoCaptureEnabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {autoCaptureEnabled ? "Pause auto voice" : "Resume auto voice"}
           </button>
-          {supportsSpeech ? (
-            <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-white/45">
-              {listening
-                ? "Listening to your mic only"
-                : loading
-                  ? `${character.name} is replying`
-                  : "Press record when it is your turn"}
-            </span>
-          ) : (
-            <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-white/45">
-              Voice capture unavailable in this browser
-            </span>
-          )}
+          <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-white/45">
+            {captureStatusLabel}
+          </span>
         </div>
-        {interimTranscript && <p className="mt-2 text-[12px] text-white/45">Your turn: {interimTranscript}</p>}
+
+        {interimTranscript && (
+          <p className="mt-2 text-[12px] text-white/45">
+            Hearing you: {interimTranscript}
+          </p>
+        )}
         {captureError && <p className="mt-2 text-[12px] text-amber-200/85">{captureError}</p>}
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
         <div className="flex gap-2.5">
           {character.avatarUrl ? (
             <img src={character.avatarUrl} alt="" className="mt-0.5 h-7 w-7 flex-shrink-0 rounded-full bg-white/10 object-cover" />
@@ -362,7 +494,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           <div>
             <p className="mb-0.5 text-[11px] text-white/40">{character.name}</p>
             <p className="text-[13px] leading-relaxed text-white/65">
-              Ask here for a saved transcript, source cards, and owner analytics without blending your voice with the character.
+              Ask here for a saved transcript, source cards, and analytics-friendly notes while the live room keeps running.
             </p>
           </div>
         </div>
@@ -503,7 +635,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={loading ? `${character.name} is replying…` : "Type your next turn to log it clearly…"}
+            placeholder={loading ? `${character.name} is replying…` : "Type here if you want to log or clarify a turn manually…"}
             className="h-10 flex-1 rounded-2xl border border-white/10 bg-white/5 px-3.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/20"
           />
           <button
@@ -513,6 +645,10 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           >
             <Send className="h-4 w-4" />
           </button>
+        </div>
+        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/35">
+          <AudioLines className="h-3.5 w-3.5" />
+          Auto voice capture keeps the transcript moving; typing remains available for corrections or edge cases.
         </div>
       </form>
     </aside>

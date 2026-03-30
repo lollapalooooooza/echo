@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Loader2, Plus, X, Mic, Volume2, Camera, BookOpen } from "lucide-react";
+import { Save, Loader2, Plus, X, Camera, BookOpen } from "lucide-react";
 
 import { KnowledgeSelection } from "@/components/knowledge-selection";
+import { VoiceSelectionPanel } from "@/components/voice-selection-panel";
 import { cn } from "@/lib/utils";
 
 const TONES = ["friendly", "professional", "casual", "witty", "academic", "storyteller"];
@@ -144,19 +145,6 @@ export default function NewCharacterPage() {
     } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   };
 
-  const previewVoice = async (voiceId: string) => {
-    try {
-      const res = await fetch("/api/voice/synthesize", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ voiceId, text: form.greeting || "Hello! I'm your AI knowledge character.", stream: false }),
-      });
-      if (!res.ok) return;
-      const buf = await res.arrayBuffer();
-      const audio = new Audio(URL.createObjectURL(new Blob([buf], { type: "audio/mpeg" })));
-      audio.play();
-    } catch (e) { console.error("Preview failed:", e); }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -254,31 +242,19 @@ export default function NewCharacterPage() {
 
         {/* Voice */}
         <Section title="Voice (ElevenLabs)">
-          <p className="mb-3 text-[13px] text-muted-foreground">Select a voice for your character.</p>
-          <div className="grid grid-cols-2 gap-2">
-            {voices.presets?.map((v: any) => (
-              <button key={v.id} onClick={() => { set("voiceId", v.id); set("voiceName", v.name); }}
-                className={cn("flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  form.voiceId === v.id ? "border-foreground bg-foreground/5" : "border-border hover:border-foreground/30")}>
-                <Volume2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                <div className="min-w-0"><p className="text-[13px] font-medium truncate">{v.name}</p><p className="text-[11px] text-muted-foreground">{v.desc}</p></div>
-              </button>
-            ))}
-            {voices.custom?.map((v: any) => (
-              <button key={v.id} onClick={() => { set("voiceId", v.elevenLabsVoiceId); set("voiceName", v.name); }}
-                className={cn("flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  form.voiceId === v.elevenLabsVoiceId ? "border-foreground bg-foreground/5" : "border-border hover:border-foreground/30")}>
-                <Mic className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                <div><p className="text-[13px] font-medium">{v.name}</p><p className="text-[11px] text-muted-foreground">Cloned</p></div>
-              </button>
-            ))}
-          </div>
-          {form.voiceId && (
-            <button onClick={() => previewVoice(form.voiceId)}
-              className="mt-3 flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium hover:bg-muted/30 transition-colors">
-              <Volume2 className="h-3.5 w-3.5" />Preview voice
-            </button>
-          )}
+          <VoiceSelectionPanel
+            voices={voices}
+            selectedVoiceId={form.voiceId}
+            onSelect={({ voiceId, voiceName }) => {
+              set("voiceId", voiceId);
+              set("voiceName", voiceName);
+            }}
+            onClear={() => {
+              set("voiceId", "");
+              set("voiceName", "");
+            }}
+            previewText={form.greeting || "Hello! I'm your AI knowledge character."}
+          />
         </Section>
 
         {/* Live Avatar */}

@@ -3,13 +3,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { LayoutDashboard, BookOpen, User, BarChart3, Menu, X, Play, Settings, LogOut } from "lucide-react";
+import { AudioLines, LayoutDashboard, BookOpen, User, BarChart3, Menu, X, Play, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { label:"Dashboard", href:"/creator", icon: LayoutDashboard },
   { label:"Knowledge", href:"/creator/knowledge", icon: BookOpen },
   { label:"Characters", href:"/creator/character", icon: User },
+  { label:"Voices", href:"/creator/voice", icon: AudioLines },
   { label:"Analytics", href:"/creator/analytics", icon: BarChart3 },
   { label:"Settings", href:"/creator/settings", icon: Settings },
 ];

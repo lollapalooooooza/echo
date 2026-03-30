@@ -90,6 +90,7 @@ export async function PUT(req: NextRequest) {
       personalityTone: body.personalityTone,
       avatarUrl: body.avatarUrl,
       voiceId: body.voiceId,
+      voiceName: body.voiceName,
       runwayCharacterId: body.runwayCharacterId,
       knowledgeSourceIds: body.knowledgeSourceIds,
       suggestedQuestions: body.suggestedQuestions,

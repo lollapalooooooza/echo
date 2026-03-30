@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { KnowledgeSelection } from "@/components/knowledge-selection";
+import { VoiceSelectionPanel } from "@/components/voice-selection-panel";
 import { cn } from "@/lib/utils";
 
 async function readResponse(response: Response) {
@@ -41,6 +42,7 @@ async function readResponse(response: Response) {
 export default function EditCharacterPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [char, setChar] = useState<any>(null);
+  const [voices, setVoices] = useState<{ presets: any[]; custom: any[] }>({ presets: [], custom: [] });
   const [knowledgeSources, setKnowledgeSources] = useState<any[]>([]);
   const [loadingKnowledge, setLoadingKnowledge] = useState(true);
   const [runwayAvatar, setRunwayAvatar] = useState<any>(null);
@@ -87,14 +89,16 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
     async function load() {
       try {
-        const [charactersRes, sourcesRes] = await Promise.all([
+        const [charactersRes, sourcesRes, voicesRes] = await Promise.all([
           fetch("/api/characters?mine=true", { cache: "no-store" }),
           fetch("/api/knowledge/sources", { cache: "no-store" }),
+          fetch("/api/voice/list", { cache: "no-store" }),
         ]);
 
-        const [charactersData, sourcesData] = await Promise.all([
+        const [charactersData, sourcesData, voicesData] = await Promise.all([
           readResponse(charactersRes),
           readResponse(sourcesRes),
+          readResponse(voicesRes),
         ]);
 
         if (!charactersRes.ok) {
@@ -111,8 +115,17 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
         setChar({
           ...current,
+          voiceId: current.voice?.isCloned ? current.voice.id : current.voice?.elevenLabsVoiceId || "",
+          voiceName: current.voice?.name || "",
           knowledgeSourceIds: current.knowledgeSources?.map((link: any) => link.source.id) || [],
         });
+
+        if (voicesRes.ok) {
+          setVoices(voicesData);
+        } else {
+          console.error("[EditCharacter] Failed to load voices:", voicesData.error);
+          setVoices({ presets: [], custom: [] });
+        }
 
         if (sourcesRes.ok) {
           const sources = Array.isArray(sourcesData) ? sourcesData : sourcesData.sources || [];
@@ -377,6 +390,25 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
             selectedSourceIds={char.knowledgeSourceIds || []}
             onToggleAll={toggleAllSources}
             onToggleItem={(item) => toggleSourceIds(item.sourceIds)}
+          />
+        </div>
+
+        <div className="rounded-xl border border-border bg-white p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold">Character Voice</h3>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Choose a preset or one of your cloned voices. This voice is used for your character's synthesized speech and widget playback.
+            </p>
+          </div>
+
+          <VoiceSelectionPanel
+            voices={voices}
+            selectedVoiceId={char.voiceId || ""}
+            onSelect={({ voiceId, voiceName }) =>
+              setChar((prev: any) => ({ ...prev, voiceId, voiceName }))
+            }
+            onClear={() => setChar((prev: any) => ({ ...prev, voiceId: "", voiceName: "" }))}
+            previewText={char.greeting || `Hello, I'm ${char.name}.`}
           />
         </div>
 

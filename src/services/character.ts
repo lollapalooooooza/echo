@@ -10,6 +10,7 @@ import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
 import { createRunwayAvatar, DEFAULT_RUNWAY_LIVE_VOICE_PRESET } from "@/services/runwayAvatar";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
+import { PRESET_VOICES } from "@/services/voiceService";
 
 // ── Runway API Configuration ─────────────────────────────────
 
@@ -58,6 +59,50 @@ export interface CreateCharacterInput {
   widgetPosition?: string;
 }
 
+async function resolveVoiceDbId(userId: string, voiceId?: string, voiceName?: string) {
+  const selectedVoiceId = voiceId?.trim();
+  if (!selectedVoiceId) return null;
+
+  const ownedVoice =
+    (await db.voice.findFirst({
+      where: {
+        userId,
+        OR: [
+          { id: selectedVoiceId },
+          { elevenLabsVoiceId: selectedVoiceId },
+        ],
+      },
+      select: { id: true },
+    })) || null;
+
+  if (ownedVoice) {
+    return ownedVoice.id;
+  }
+
+  const preset = PRESET_VOICES.find((item) => item.id === selectedVoiceId);
+  if (!preset) {
+    throw new Error("Selected voice could not be found");
+  }
+
+  const voice = await db.voice.upsert({
+    where: { id: `preset_${selectedVoiceId}` },
+    create: {
+      id: `preset_${selectedVoiceId}`,
+      userId,
+      name: voiceName || preset.name,
+      elevenLabsVoiceId: selectedVoiceId,
+      isCloned: false,
+      isDefault: false,
+    },
+    update: {
+      name: voiceName || preset.name,
+      elevenLabsVoiceId: selectedVoiceId,
+    },
+  });
+
+  return voice.id;
+}
+
 /**
  * Create a character with optional Runway avatar generation
  * and knowledge source linking.
@@ -72,23 +117,7 @@ export async function createCharacter(input: CreateCharacterInput) {
   const existing = await db.character.findUnique({ where: { slug } });
   if (existing) throw new Error("A character with this name already exists");
 
-  // Handle voice: create Voice record for preset ElevenLabs voices
-  let voiceDbId = input.voiceId || null;
-  if (input.voiceId && !input.voiceId.startsWith("cl")) {
-    const voice = await db.voice.upsert({
-      where: { id: `preset_${input.voiceId}` },
-      create: {
-        id: `preset_${input.voiceId}`,
-        userId: input.userId,
-        name: input.voiceName || "Preset",
-        elevenLabsVoiceId: input.voiceId,
-        isCloned: false,
-        isDefault: false,
-      },
-      update: {},
-    });
-    voiceDbId = voice.id;
-  }
+  const voiceDbId = await resolveVoiceDbId(input.userId, input.voiceId, input.voiceName);
 
   // Create Runway avatar if needed
   let runwayCharacterId = input.runwayCharacterId?.trim() || null;
@@ -158,6 +187,11 @@ export async function updateCharacter(
   const char = await db.character.findUnique({ where: { id: characterId } });
   if (!char || char.userId !== userId) throw new Error("Character not found");
 
+  const voiceDbId =
+    updates.voiceId === undefined
+      ? undefined
+      : await resolveVoiceDbId(userId, updates.voiceId, updates.voiceName);
+
   const updated = await db.character.update({
     where: { id: characterId },
     data: {
@@ -166,7 +200,7 @@ export async function updateCharacter(
       greeting: updates.greeting,
       personalityTone: updates.personalityTone,
       avatarUrl: updates.avatarUrl === undefined ? undefined : updates.avatarUrl?.trim() || null,
-      voiceId: updates.voiceId,
+      voiceId: voiceDbId,
       runwayCharacterId: updates.runwayCharacterId === undefined ? undefined : updates.runwayCharacterId?.trim() || null,
       suggestedQuestions: updates.suggestedQuestions,
       status: updates.publish !== undefined ? (updates.publish ? "PUBLISHED" : "DRAFT") : undefined,

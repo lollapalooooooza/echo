@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { Mic, Upload, Loader2, Check } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { AudioLines, Check, ChevronRight, Loader2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 
 import type { UserProfile } from "@/types";
@@ -18,10 +19,6 @@ export default function SettingsPage() {
     username: "",
     bio: "",
   });
-  const [cloneName, setCloneName] = useState("");
-  const [cloning, setCloning] = useState(false);
-  const [cloneResult, setCloneResult] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!sessionUserId) return;
@@ -83,22 +80,6 @@ export default function SettingsPage() {
     } finally {
       setProfileSaving(false);
     }
-  };
-
-  const handleClone = async () => {
-    const file = fileRef.current?.files?.[0];
-    if (!file || !cloneName.trim()) { alert("Select an audio file and enter a name."); return; }
-    setCloning(true);
-    try {
-      const form = new FormData();
-      form.append("name", cloneName);
-      form.append("audio", file);
-      const res = await fetch("/api/voice/clone", { method: "POST", body: form });
-      const data = await res.json();
-      if (data.voiceId) setCloneResult(data.voiceId);
-      else alert(data.error || "Clone failed");
-    } catch (e: any) { alert(e.message); }
-    setCloning(false);
   };
 
   return (
@@ -171,22 +152,24 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Voice Cloning */}
-      <div className="rounded-xl border border-border bg-white p-5 space-y-4">
-        <h3 className="text-sm font-semibold flex items-center gap-2"><Mic className="h-4 w-4" /> Clone Your Voice</h3>
-        <p className="text-[13px] text-muted-foreground">Upload a 30-second to 5-minute audio sample of your voice. ElevenLabs will create a cloned voice you can assign to your characters.</p>
-
-        <div className="space-y-3">
-          <div><label className="mb-1 block text-[13px] font-medium">Voice name</label><input value={cloneName} onChange={e => setCloneName(e.target.value)} placeholder="e.g. My Voice" className="h-9 w-full max-w-sm rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" /></div>
-          <div>
-            <label className="mb-1 block text-[13px] font-medium">Audio sample (MP3, WAV, M4A)</label>
-            <input ref={fileRef} type="file" accept="audio/*" className="text-sm" />
+      <div className="rounded-[28px] border border-border bg-[linear-gradient(160deg,#f8fafc,#ffffff)] p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <AudioLines className="h-4 w-4" />
+              Voice Library
+            </h3>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+              Voice cloning now lives in its own dedicated workspace. Manage custom voices, preview them, see which characters already use them, and assign them later while creating or editing a character.
+            </p>
           </div>
-          <button onClick={handleClone} disabled={cloning} className="flex h-9 items-center gap-1.5 rounded-md bg-foreground px-4 text-[13px] font-medium text-white hover:opacity-80 disabled:opacity-50">
-            {cloning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-            {cloning ? "Cloning…" : "Clone Voice"}
-          </button>
-          {cloneResult && <p className="flex items-center gap-1.5 text-[13px] text-emerald-600"><Check className="h-4 w-4" /> Voice cloned! ID: {cloneResult}. Select it when creating a character.</p>}
+          <Link
+            href="/creator/voice"
+            className="inline-flex h-10 items-center gap-2 rounded-full bg-foreground px-4 text-[13px] font-medium text-white transition-opacity hover:opacity-85"
+          >
+            Open voice library
+            <ChevronRight className="h-4 w-4" />
+          </Link>
         </div>
       </div>
 
