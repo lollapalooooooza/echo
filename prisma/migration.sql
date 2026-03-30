@@ -107,12 +107,16 @@ CREATE TABLE IF NOT EXISTS "KnowledgeSource" (
   "publishDate" TIMESTAMP(3),
   "headings" JSONB,
   "topic" TEXT,
+  "runwayDocumentId" TEXT,
+  "runwayDocumentHash" TEXT,
+  "runwayDocumentSyncedAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "KnowledgeSource_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "KnowledgeSource_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS "KnowledgeSource_userId_status_idx" ON "KnowledgeSource"("userId", "status");
+CREATE INDEX IF NOT EXISTS "KnowledgeSource_runwayDocumentId_idx" ON "KnowledgeSource"("runwayDocumentId");
 
 CREATE TABLE IF NOT EXISTS "ContentChunk" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
@@ -268,7 +272,11 @@ EXCEPTION WHEN others THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  ALTER TABLE "KnowledgeSource" ADD COLUMN IF NOT EXISTS "topic" TEXT;
+ALTER TABLE "KnowledgeSource" ADD COLUMN IF NOT EXISTS "topic" TEXT;
+ALTER TABLE "KnowledgeSource" ADD COLUMN IF NOT EXISTS "runwayDocumentId" TEXT;
+ALTER TABLE "KnowledgeSource" ADD COLUMN IF NOT EXISTS "runwayDocumentHash" TEXT;
+ALTER TABLE "KnowledgeSource" ADD COLUMN IF NOT EXISTS "runwayDocumentSyncedAt" TIMESTAMP(3);
+CREATE INDEX IF NOT EXISTS "KnowledgeSource_runwayDocumentId_idx" ON "KnowledgeSource"("runwayDocumentId");
 EXCEPTION WHEN others THEN NULL;
 END $$;
 

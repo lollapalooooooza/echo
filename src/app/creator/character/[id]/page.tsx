@@ -390,6 +390,11 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
               {runwayAvatarLoading ? "Loading…" : runwayAvatar?.status || (char.runwayCharacterId ? "Unknown" : "Unavailable")}
             </p>
             {runwayAvatar?.voice?.name && <p className="mt-1"><span className="font-medium">Voice:</span> {runwayAvatar.voice.name}</p>}
+            {Array.isArray(runwayAvatar?.documentIds) && (
+              <p className="mt-1">
+                <span className="font-medium">Attached knowledge documents:</span> {runwayAvatar.documentIds.length}
+              </p>
+            )}
             {runwayAvatarError && <p className="mt-2 text-[12px] text-rose-600">{runwayAvatarError}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -407,6 +412,9 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
             </a>
           </div>
           {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload a character image to generate a Runway live character.</p>}
+          {char.runwayCharacterId && Array.isArray(runwayAvatar?.documentIds) && runwayAvatar.documentIds.length === 0 && (
+            <p className="text-[11px] text-amber-600">Runway still shows zero attached knowledge documents for this avatar. Save the character again or regenerate the avatar to resync its knowledge.</p>
+          )}
           {runwayAvatarStatus === "FAILED" && <p className="text-[11px] text-amber-600">Runway marked this avatar as failed. Regenerate it to restore live sessions.</p>}
         </div>
 

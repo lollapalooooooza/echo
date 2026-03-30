@@ -37,6 +37,7 @@ export async function createRunwayAvatar(input: {
   personalityTone: string;
   avatarUrl: string;
   voicePreset?: string;
+  documentIds?: string[];
 }) {
   const client = getRunwayClient();
   const referenceImage = await toRunwayImageSource(input.avatarUrl);
@@ -48,10 +49,37 @@ export async function createRunwayAvatar(input: {
     referenceImage,
     startScript: input.greeting || undefined,
     imageProcessing: "optimize",
+    documentIds: input.documentIds,
     voice: {
       type: "runway-live-preset",
       presetId: voicePreset,
     },
+  });
+}
+
+export async function updateRunwayAvatar(
+  avatarId: string,
+  input: {
+    name?: string;
+    bio?: string;
+    greeting?: string;
+    personalityTone?: string;
+    avatarUrl?: string;
+    documentIds?: string[];
+  }
+) {
+  const client = getRunwayClient();
+
+  return client.avatars.update(avatarId, {
+    name: input.name,
+    personality:
+      input.name && input.bio !== undefined && input.personalityTone !== undefined
+        ? buildPersonality(input.name, input.bio, input.personalityTone)
+        : undefined,
+    startScript: input.greeting,
+    referenceImage: input.avatarUrl ? await toRunwayImageSource(input.avatarUrl) : undefined,
+    documentIds: input.documentIds,
+    imageProcessing: input.avatarUrl ? "optimize" : undefined,
   });
 }
 

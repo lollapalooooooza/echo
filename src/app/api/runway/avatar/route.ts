@@ -4,6 +4,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createRunwayAvatar, getRunwayAvatar } from "@/services/runwayAvatar";
+import { getLinkedSourceIds } from "@/services/character";
+import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +95,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ avatar, runwayCharacterId });
+    const linkedSourceIds = await getLinkedSourceIds(character.id);
+    await syncRunwayKnowledgeToAvatar(runwayCharacterId, character.userId, linkedSourceIds);
+    const refreshedAvatar = await getRunwayAvatar(runwayCharacterId);
+
+    return NextResponse.json({ avatar: refreshedAvatar, runwayCharacterId });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to generate Runway avatar" }, { status: 500 });
   }
