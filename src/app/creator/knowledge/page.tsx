@@ -10,6 +10,8 @@ import {
   Database,
   ExternalLink,
   FileText,
+  FolderClosed,
+  FolderOpen,
   Globe,
   Loader2,
   RefreshCw,
@@ -254,19 +256,35 @@ export default function KnowledgePage() {
             const primaryMember = item.members[0];
             const status = statusCfg[item.status] || statusCfg.PENDING;
             const type = typeCfg[primaryMember?.type] || typeCfg.TEXT;
-            const TypeIcon = type.icon;
+            const isFolder = item.kind === "domain";
+            const TypeIcon = isFolder ? FolderClosed : type.icon;
 
             return (
-              <div key={item.id} onClick={() => setSelectedItem(item)} className="group cursor-pointer rounded-2xl border border-border bg-white p-5 transition-all duration-200 hover:border-border/80 hover:shadow-md">
+              <div
+                key={item.id}
+                onClick={() => setSelectedItem(item)}
+                className={cn(
+                  "group cursor-pointer overflow-hidden rounded-[24px] border bg-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg",
+                  isFolder
+                    ? "border-amber-200/80 shadow-amber-100/40 hover:border-amber-300"
+                    : "border-border hover:border-border/80"
+                )}
+              >
+                <div className={cn("px-5 pb-5 pt-5", isFolder && "bg-[linear-gradient(180deg,rgba(251,191,36,0.16),rgba(255,255,255,0))]")}>
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-muted">
-                      <TypeIcon className="h-4 w-4 text-muted-foreground" />
+                    <div className={cn(
+                      "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl",
+                      isFolder ? "bg-amber-100 text-amber-700" : "bg-muted"
+                    )}>
+                      <TypeIcon className={cn("h-4 w-4", isFolder ? "text-amber-700" : "text-muted-foreground")} />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[14px] font-semibold leading-snug">{item.title}</p>
+                      <p className="line-clamp-2 break-words text-[14px] font-semibold leading-snug">{item.title}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[10px] font-medium", type.color)}>{type.label}</span>
+                        <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[10px] font-medium", isFolder ? "bg-amber-100 text-amber-800" : type.color)}>
+                          {isFolder ? "Folder" : type.label}
+                        </span>
                         {item.pageCount > 1 && <span className="inline-flex rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-700">{item.pageCount} pages</span>}
                         {item.topic && <span className="inline-flex rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] text-muted-foreground">{item.topic}</span>}
                       </div>
@@ -279,7 +297,9 @@ export default function KnowledgePage() {
                   <p className="mb-2 truncate text-[11px] text-muted-foreground">{item.sourceUrl}</p>
                 )}
 
-                <p className="mb-4 line-clamp-4 text-[12px] leading-relaxed text-muted-foreground">{item.summary}</p>
+                <p className={cn("mb-4 text-[12px] leading-relaxed", isFolder ? "line-clamp-5 text-neutral-700" : "line-clamp-4 text-muted-foreground")}>
+                  {item.summary}
+                </p>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
@@ -294,6 +314,7 @@ export default function KnowledgePage() {
                     {item.members.find((member) => member.errorMsg)?.errorMsg}
                   </p>
                 )}
+                </div>
               </div>
             );
           })}
@@ -304,7 +325,8 @@ export default function KnowledgePage() {
         const primaryMember = selectedItem.members[0];
         const status = statusCfg[selectedItem.status] || statusCfg.PENDING;
         const type = typeCfg[primaryMember?.type] || typeCfg.TEXT;
-        const TypeIcon = type.icon;
+        const isFolder = selectedItem.kind === "domain";
+        const TypeIcon = isFolder ? FolderOpen : type.icon;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-end" onClick={() => setSelectedItem(null)}>
@@ -313,12 +335,14 @@ export default function KnowledgePage() {
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-white px-6 py-4">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-muted">
-                    <TypeIcon className="h-5 w-5 text-muted-foreground" />
+                    <TypeIcon className={cn("h-5 w-5", isFolder ? "text-amber-700" : "text-muted-foreground")} />
                   </div>
                   <div className="min-w-0">
-                    <h2 className="truncate text-[15px] font-semibold">{selectedItem.title}</h2>
+                    <h2 className="line-clamp-2 break-words text-[15px] font-semibold">{selectedItem.title}</h2>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[10px] font-medium", type.color)}>{type.label}</span>
+                      <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[10px] font-medium", isFolder ? "bg-amber-100 text-amber-800" : type.color)}>
+                        {isFolder ? "Folder" : type.label}
+                      </span>
                       {selectedItem.pageCount > 1 && <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-700">{selectedItem.pageCount} pages</span>}
                     </div>
                   </div>

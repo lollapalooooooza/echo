@@ -4,6 +4,7 @@
 
 import { db } from "@/lib/db";
 import { scrapeUrl, crawlWebsite } from "@/services/scraping";
+import { summarizeKnowledgeSource } from "@/services/content-intelligence";
 import { storeEmbeddings } from "./embeddings";
 import type { ScrapeResult } from "@/types";
 
@@ -108,14 +109,20 @@ export async function ingestUrl(url: string, userId: string): Promise<string> {
     const scrapeResult = await scrapeUrl(url, { mode: "stealth" });
     console.log(`[Ingest] Scraped: "${scrapeResult.title}" (${scrapeResult.wordCount} words, via ${scrapeResult.fetchMethod})`);
 
-    const topic = detectTopic(scrapeResult.content, scrapeResult.title);
+    const summaryMeta = await summarizeKnowledgeSource({
+      title: scrapeResult.title,
+      text: scrapeResult.content,
+      sourceUrl: url,
+      type: "URL",
+    });
+    const topic = summaryMeta.topic || detectTopic(scrapeResult.content, scrapeResult.title);
 
     await db.knowledgeSource.update({
       where: { id: source.id },
       data: {
-        title: scrapeResult.title,
+        title: summaryMeta.title || scrapeResult.title,
         cleanedText: scrapeResult.content,
-        summary: scrapeResult.content.slice(0, 300) + "…",
+        summary: summaryMeta.summary,
         publishDate: scrapeResult.publishDate ? new Date(scrapeResult.publishDate) : null,
         headings: scrapeResult.headings as any,
         topic,
@@ -143,14 +150,19 @@ export async function ingestUrl(url: string, userId: string): Promise<string> {
 }
 
 export async function ingestText(title: string, text: string, userId: string): Promise<string> {
-  const topic = detectTopic(text, title);
+  const summaryMeta = await summarizeKnowledgeSource({
+    title,
+    text,
+    type: "TEXT",
+  });
+  const topic = summaryMeta.topic || detectTopic(text, title);
   const source = await db.knowledgeSource.create({
     data: {
       userId,
       type: "TEXT",
-      title,
+      title: summaryMeta.title || title,
       cleanedText: text,
-      summary: text.slice(0, 300) + "…",
+      summary: summaryMeta.summary,
       topic,
       status: "PROCESSING",
     } as any,
@@ -179,15 +191,21 @@ export async function ingestWebsite(baseUrl: string, userId: string) {
   let indexed = 0;
   for (const result of results) {
     try {
-      const topic = detectTopic(result.content, result.title);
+      const summaryMeta = await summarizeKnowledgeSource({
+        title: result.title,
+        text: result.content,
+        sourceUrl: result.url,
+        type: "WEBSITE",
+      });
+      const topic = summaryMeta.topic || detectTopic(result.content, result.title);
       const source = await db.knowledgeSource.create({
         data: {
           userId,
           type: "WEBSITE",
-          title: result.title,
+          title: summaryMeta.title || result.title,
           sourceUrl: result.url,
           cleanedText: result.content,
-          summary: result.content.slice(0, 300) + "…",
+          summary: summaryMeta.summary,
           publishDate: result.publishDate ? new Date(result.publishDate) : null,
           headings: result.headings as any,
           topic,
@@ -228,14 +246,19 @@ export async function ingestFile(buffer: Buffer, filename: string, userId: strin
     console.log(`[Ingest] Parsed: "${title}" (${text.split(/\s+/).length} words)`);
 
     const topic = detectTopic(text, title);
+    const summaryMeta = await summarizeKnowledgeSource({
+      title,
+      text,
+      type: "UPLOAD",
+    });
 
     await db.knowledgeSource.update({
       where: { id: source.id },
       data: {
-        title,
+        title: summaryMeta.title || title,
         cleanedText: text,
-        summary: text.slice(0, 300) + "…",
-        topic,
+        summary: summaryMeta.summary,
+        topic: summaryMeta.topic || topic,
         status: "PROCESSING",
       } as any,
     });
@@ -267,9 +290,20 @@ export async function resyncAllContent(userId: string) {
       await db.contentChunk.deleteMany({ where: { sourceId: source.id } });
       const text = source.cleanedText || "";
       const chunkCount = await processAndStoreChunks(source.id, text);
+      const summaryMeta = await summarizeKnowledgeSource({
+        title: source.title,
+        text,
+        sourceUrl: source.sourceUrl,
+        type: source.type,
+      });
       await db.knowledgeSource.update({
         where: { id: source.id },
-        data: { chunkCount },
+        data: {
+          title: summaryMeta.title || source.title,
+          summary: summaryMeta.summary,
+          topic: summaryMeta.topic || detectTopic(text, source.title),
+          chunkCount,
+        },
       });
       reindexed++;
     } catch {

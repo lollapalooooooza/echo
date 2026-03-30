@@ -27,6 +27,7 @@ import {
 } from "@runwayml/avatars-react";
 
 import { cn } from "@/lib/utils";
+import { LiveConversationSidebar } from "@/components/live-conversation-sidebar";
 
 type ConnectionState =
   | { status: "connecting" }
@@ -316,47 +317,9 @@ export function RunwayLiveRoom({
           )}
         </div>
 
-        <aside className="w-full space-y-4 lg:max-w-sm">
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-emerald-100/75">
-              <Sparkles className="h-3.5 w-3.5" />
-              Live conversation
-            </div>
-            <h3 className="mt-3 text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-              Talk to the real Runway character first
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/65">
-              This room now prioritizes the live Runway avatar instead of the older looping video or static portrait. If Runway is unavailable, you can still open fallback chat manually.
-            </p>
-          </div>
-
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/45">Opening line</p>
-            <p className="mt-3 text-sm leading-relaxed text-white/75">{character.greeting}</p>
-          </div>
-
-          {(character.suggestedQuestions || []).length > 0 && (
-            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-              <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/45">Try asking</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {(character.suggestedQuestions || []).slice(0, 6).map((question: string, index: number) => (
-                  <div key={index} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] leading-relaxed text-white/70">
-                    {question}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/45">Browser tips</p>
-            <ul className="mt-4 space-y-3 text-sm leading-relaxed text-white/65">
-              <li>Allow microphone access when your browser asks so the avatar can hear you.</li>
-              <li>Camera is optional, but turning it on gives you a fuller two-way live session.</li>
-              <li>If the live session fails, retry once before dropping to fallback chat.</li>
-            </ul>
-          </div>
-        </aside>
+        <div className="w-full lg:max-w-sm">
+          <LiveConversationSidebar character={character} />
+        </div>
       </div>
     </div>
   );

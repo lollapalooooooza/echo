@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Check, FileText, Globe, Loader2, Type } from "lucide-react";
+import { BookOpen, Check, FileText, FolderClosed, Globe, Loader2, Type } from "lucide-react";
 
 import { type KnowledgeDisplayItem, groupKnowledgeSources } from "@/lib/knowledge-display";
 import { cn } from "@/lib/utils";
@@ -90,7 +90,8 @@ export function KnowledgeSelection({
         <div className="grid gap-3 sm:grid-cols-2">
           {items.map((item) => {
             const primaryMember = item.members[0];
-            const Icon = sourceTypeIcon[primaryMember?.type] || FileText;
+            const isFolder = item.kind === "domain";
+            const Icon = isFolder ? FolderClosed : sourceTypeIcon[primaryMember?.type] || FileText;
             const badge = sourceTypeBadge[primaryMember?.type] || sourceTypeBadge.TEXT;
             const isSelected = item.sourceIds.every((id) => selectedSourceIds.includes(id));
 
@@ -108,13 +109,15 @@ export function KnowledgeSelection({
                     {isSelected && <Check className="h-3.5 w-3.5" />}
                   </div>
                   <div className="flex min-w-0 flex-1 gap-3">
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-muted">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
+                    <div className={cn("flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl", isFolder ? "bg-amber-100" : "bg-muted")}>
+                      <Icon className={cn("h-4 w-4", isFolder ? "text-amber-700" : "text-muted-foreground")} />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold leading-snug">{item.title}</p>
+                      <p className="line-clamp-2 break-words text-sm font-semibold leading-snug">{item.title}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[10px] font-medium", badge.color)}>{badge.label}</span>
+                        <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[10px] font-medium", isFolder ? "bg-amber-100 text-amber-800" : badge.color)}>
+                          {isFolder ? "Folder" : badge.label}
+                        </span>
                         {item.pageCount > 1 && <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-700">{item.pageCount} pages</span>}
                         {item.topic && <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] text-muted-foreground">{item.topic}</span>}
                       </div>

@@ -27,6 +27,7 @@ export type KnowledgeDisplayItem<T extends KnowledgeLike = KnowledgeLike> = {
   searchText: string;
   domainLabel?: string | null;
   createdAt?: string | Date | null;
+  webSourceCount?: number;
 };
 
 const MULTI_PART_TLDS = new Set([
@@ -114,19 +115,16 @@ export function getKnowledgeDisplayTitle(source: KnowledgeLike) {
   }
 
   if ((source.type === "URL" || source.type === "WEBSITE") && domainLabel) {
+    if (baseTitle && !/^https?:\/\//i.test(baseTitle)) {
+      return baseTitle;
+    }
+
     if (pathLabel && pathLabel !== "/") {
-      const shortPath = pathLabel.length > 40 ? `/${pathLabel.split("/").filter(Boolean).slice(-2).join("/")}` : pathLabel;
-      if (baseTitle && !baseTitle.toLowerCase().includes(shortPath.toLowerCase())) {
-        return `${baseTitle} · ${shortPath}`;
-      }
+      const shortPath = pathLabel.length > 48 ? `/${pathLabel.split("/").filter(Boolean).slice(-2).join("/")}` : pathLabel;
       return `${domainLabel}${shortPath}`;
     }
 
-    if (baseTitle && !baseTitle.toLowerCase().includes(domainLabel)) {
-      return `${baseTitle} · ${domainLabel}`;
-    }
-
-    return baseTitle || `${domainLabel}/`;
+    return `${domainLabel}/`;
   }
 
   return baseTitle || "Untitled source";
@@ -174,12 +172,17 @@ function buildDomainSummary<T extends KnowledgeLike>(domainLabel: string, member
       return cleanText(member.title, 50);
     })
     .filter(Boolean);
+  const summaryHighlights = Array.from(new Set(members.map((member) => cleanText(member.summary, 90)).filter(Boolean))).slice(0, 2);
 
   const uniqueLabels = Array.from(new Set(memberTitles)).slice(0, 4);
   const topics = Array.from(new Set(members.map((member) => member.topic).filter(Boolean))).slice(0, 2);
   const coverage = uniqueLabels.length
     ? `Covers ${members.length} pages from ${domainLabel}/ including ${uniqueLabels.join(", ")}`
     : `Covers ${members.length} pages from ${domainLabel}/`;
+
+  if (summaryHighlights.length > 0) {
+    return `${coverage}. ${summaryHighlights.join(" ")}`;
+  }
 
   if (topics.length > 0) {
     return `${coverage}. Topics: ${topics.join(", ")}.`;
@@ -222,8 +225,11 @@ export function groupKnowledgeSources<T extends KnowledgeLike>(sources: T[]) {
   const items: KnowledgeDisplayItem<T>[] = [];
 
   for (const source of sources) {
-    const domainLabel = source.type === "WEBSITE" ? getDomainLabel(source.sourceUrl) : null;
-    if (source.type === "WEBSITE" && domainLabel) {
+    const domainLabel = source.sourceUrl && (source.type === "WEBSITE" || source.type === "URL")
+      ? getDomainLabel(source.sourceUrl)
+      : null;
+
+    if (domainLabel) {
       const existing = groupedWebsiteSources.get(domainLabel) || [];
       existing.push(source);
       groupedWebsiteSources.set(domainLabel, existing);
@@ -258,6 +264,7 @@ export function groupKnowledgeSources<T extends KnowledgeLike>(sources: T[]) {
       members,
       createdAt: members[0]?.createdAt,
       domainLabel,
+      webSourceCount: members.filter((member) => member.type === "WEBSITE" || member.type === "URL").length,
       searchText: [
         domainLabel,
         ...members.map((member) => [member.title, member.sourceUrl, member.summary, member.topic].filter(Boolean).join(" ")),
