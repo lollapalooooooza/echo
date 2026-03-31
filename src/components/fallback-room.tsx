@@ -363,6 +363,8 @@ export function FallbackRoom({
   const started = messages.length > 0;
   const isLight = roomTheme === "light";
   const lyricLines = buildLyricLines(subtitle);
+  const lyricQueue = lyricLines.length > 0 ? lyricLines : [loading ? "Thinking..." : character.greeting];
+  const activeLyricIndex = lyricQueue.length - 1;
   const pulseOffset = speaking ? Math.min(32, Math.max(10, subtitle.length / 5)) : 8;
 
   return (
@@ -506,35 +508,58 @@ export function FallbackRoom({
             </div>
 
             {(subtitle || speaking || loading) && (
-              <div
-                className={cn(
-                  "mb-8 w-full max-w-2xl overflow-hidden rounded-[28px] border px-6 py-5 shadow-xl backdrop-blur-xl",
-                  isLight
-                    ? "border-white/70 bg-white/65 shadow-amber-100/80"
-                    : "border-white/10 bg-white/10 shadow-black/25"
-                )}
-              >
-                <p className={cn("mb-2 text-[10px] font-semibold uppercase tracking-[0.22em]", isLight ? "text-slate-400" : "text-white/35")}>
-                  live response
-                </p>
-                <div className="space-y-2">
-                  {(lyricLines.length > 0 ? lyricLines : [loading ? "Thinking..." : character.greeting]).map((line, index) => (
-                    <p
-                      key={`${line}-${index}`}
-                      className={cn(
-                        "animate-fade-in text-center transition-all duration-300",
-                        index === lyricLines.length - 1
-                          ? isLight
-                            ? "text-[1.15rem] font-medium text-slate-900"
-                            : "text-[1.15rem] font-medium text-white"
-                          : isLight
-                            ? "text-sm text-slate-400"
-                            : "text-sm text-white/40"
-                      )}
-                    >
-                      {line}
-                    </p>
-                  ))}
+              <div className="relative mb-10 flex h-40 w-full max-w-3xl items-center justify-center overflow-hidden px-4 sm:h-48">
+                <div
+                  className={cn(
+                    "pointer-events-none absolute inset-x-0 top-0 h-12",
+                    isLight
+                      ? "bg-gradient-to-b from-[#f8f6f1] via-[#f8f6f1]/85 to-transparent"
+                      : "bg-gradient-to-b from-[rgba(6,6,8,0.92)] via-[rgba(6,6,8,0.72)] to-transparent"
+                  )}
+                />
+                <div
+                  className={cn(
+                    "pointer-events-none absolute inset-x-0 bottom-0 h-12",
+                    isLight
+                      ? "bg-gradient-to-t from-[#f8f6f1] via-[#f8f6f1]/85 to-transparent"
+                      : "bg-gradient-to-t from-[rgba(6,6,8,0.92)] via-[rgba(6,6,8,0.72)] to-transparent"
+                  )}
+                />
+                <div className="flex w-full max-w-2xl flex-col items-center justify-center gap-2 text-center">
+                  {lyricQueue.map((line, index) => {
+                    const distance = activeLyricIndex - index;
+
+                    return (
+                      <p
+                        key={`${line}-${index}`}
+                        className={cn(
+                          "max-w-2xl animate-fade-in leading-tight transition-all duration-300",
+                          distance === 0
+                            ? isLight
+                              ? "text-[1.4rem] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[1.75rem]"
+                              : "text-[1.4rem] font-semibold tracking-[-0.03em] text-white sm:text-[1.75rem]"
+                            : distance === 1
+                              ? isLight
+                                ? "text-base text-slate-400 blur-[0.3px] sm:text-lg"
+                                : "text-base text-white/45 blur-[0.3px] sm:text-lg"
+                              : isLight
+                                ? "text-sm text-slate-300 blur-[0.9px]"
+                                : "text-sm text-white/25 blur-[0.9px]"
+                        )}
+                        style={{
+                          opacity: distance === 0 ? 1 : distance === 1 ? 0.68 : 0.28,
+                          transform:
+                            distance === 0
+                              ? "translateY(0) scale(1.05)"
+                              : distance === 1
+                                ? "translateY(-6px) scale(0.94)"
+                                : `translateY(-${10 + distance * 4}px) scale(0.88)`,
+                        }}
+                      >
+                        {line}
+                      </p>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -858,12 +883,33 @@ function buildLyricLines(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return [];
 
-  const lines = normalized
-    .split(/(?<=[.!?])\s+/)
-    .filter(Boolean)
-    .slice(-3);
+  const punctuated = normalized
+    .split(/(?<=[.!?])\s+|(?<=,)\s+|(?<=;)\s+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 
-  return lines.length > 0 ? lines : [normalized.slice(-120)];
+  const lines = punctuated.length > 0
+    ? punctuated
+    : normalized
+        .split(/\s+/)
+        .reduce<string[]>((chunks, word) => {
+          const current = chunks[chunks.length - 1] || "";
+          if (!current) {
+            chunks.push(word);
+            return chunks;
+          }
+
+          if (current.split(/\s+/).length >= 7) {
+            chunks.push(word);
+            return chunks;
+          }
+
+          chunks[chunks.length - 1] = `${current} ${word}`;
+          return chunks;
+        }, [])
+        .filter(Boolean);
+
+  return lines.slice(-4);
 }
 
 function truncateBio(value?: string | null) {
