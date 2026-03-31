@@ -7,12 +7,15 @@ import {
   ArrowLeft,
   Camera,
   Loader2,
+  MessageCircle,
   MessageCircleMore,
   Mic,
   MonitorUp,
+  MoonStar,
   PhoneOff,
   RefreshCw,
   Sparkles,
+  SunMedium,
   Video,
 } from "lucide-react";
 import { isTrackReference } from "@livekit/components-react";
@@ -28,6 +31,9 @@ import {
 
 import { cn } from "@/lib/utils";
 import { LiveConversationSidebar } from "@/components/live-conversation-sidebar";
+
+type RoomTheme = "light" | "dark";
+const ROOM_THEME_STORAGE_KEY = "echonest-room-theme";
 
 type ConnectionState =
   | { status: "connecting" }
@@ -53,45 +59,83 @@ async function readResponse(response: Response) {
   };
 }
 
-function CharacterPlaceholder({ character, label, detail }: { character: any; label: string; detail: string }) {
+function CharacterPlaceholder({
+  character,
+  label,
+  detail,
+  theme,
+}: {
+  character: any;
+  label: string;
+  detail: string;
+  theme: RoomTheme;
+}) {
+  const isLight = theme === "light";
   return (
-    <div className="relative flex h-full min-h-[26rem] items-center justify-center overflow-hidden rounded-[28px] border border-white/10 bg-neutral-950">
+    <div
+      className={cn(
+        "relative flex h-full min-h-[26rem] items-center justify-center overflow-hidden rounded-[28px] border",
+        isLight ? "border-white/70 bg-[#f6f2ea]" : "border-white/10 bg-neutral-950"
+      )}
+    >
       {character.avatarUrl ? (
         <img src={character.avatarUrl} alt={character.name} className="absolute inset-0 h-full w-full object-cover opacity-25 blur-[2px]" />
       ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black" />
+        <div className={cn("absolute inset-0 bg-gradient-to-br", isLight ? "from-white via-[#f6f2ea] to-[#ece5d7]" : "from-neutral-900 via-neutral-950 to-black")} />
       )}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_42%),linear-gradient(180deg,rgba(6,8,15,0.12),rgba(6,8,15,0.9))]" />
+      <div
+        className={cn(
+          "absolute inset-0",
+          isLight
+            ? "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.72),_transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(246,242,234,0.9))]"
+            : "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_42%),linear-gradient(180deg,rgba(6,8,15,0.12),rgba(6,8,15,0.9))]"
+        )}
+      />
       <div className="relative z-10 flex max-w-md flex-col items-center px-6 text-center">
-        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-white/15 bg-white/10 backdrop-blur-sm">
-          <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+        <div
+          className={cn(
+            "mb-5 flex h-16 w-16 items-center justify-center rounded-full border backdrop-blur-sm",
+            isLight ? "border-white/80 bg-white/70" : "border-white/15 bg-white/10"
+          )}
+        >
+          <Loader2 className={cn("h-6 w-6 animate-spin", isLight ? "text-slate-700" : "text-white/80")} />
         </div>
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-200/80">{label}</p>
-        <p className="mt-3 text-sm leading-relaxed text-white/65">{detail}</p>
+        <p className={cn("text-sm font-semibold uppercase tracking-[0.22em]", isLight ? "text-emerald-700" : "text-emerald-200/80")}>{label}</p>
+        <p className={cn("mt-3 text-sm leading-relaxed", isLight ? "text-slate-600" : "text-white/65")}>{detail}</p>
       </div>
     </div>
   );
 }
 
-function RunwaySessionSurface({ character }: { character: any }) {
+function RunwaySessionSurface({ character, theme }: { character: any; theme: RoomTheme }) {
   const session = useAvatarSession();
+  const isLight = theme === "light";
 
   return (
     <div className="flex h-full min-h-[32rem] flex-col lg:min-h-0">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-emerald-200/70">Runway Live Character</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
+          <p className={cn("text-[11px] font-medium uppercase tracking-[0.24em]", isLight ? "text-emerald-700/80" : "text-emerald-200/70")}>
+            Runway Live Character
+          </p>
+          <h2 className={cn("mt-2 text-2xl font-semibold", isLight ? "text-slate-900" : "text-white")} style={{ fontFamily: "var(--font-display)" }}>
             {character.name}
           </h2>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-300/10 px-3 py-1.5 text-[11px] font-medium text-emerald-100">
+        <div
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium",
+            isLight
+              ? "bg-emerald-500/12 text-emerald-700"
+              : "border border-emerald-300/15 bg-emerald-300/10 text-emerald-100"
+          )}
+        >
           <span className="live-dot" style={{ width: 6, height: 6 }} />
           {session.state === "active" ? "Live now" : session.state === "connecting" ? "Joining live call" : "Connected"}
         </div>
       </div>
 
-      <div className="relative flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-black">
+      <div className={cn("relative flex-1 overflow-hidden rounded-[28px] border", isLight ? "border-white/70 bg-white/60" : "border-white/10 bg-black")}>
         <AvatarVideo>
           {(avatar) => {
             if (avatar.status === "ready") {
@@ -104,6 +148,7 @@ function RunwaySessionSurface({ character }: { character: any }) {
                   character={character}
                   label="Preparing video"
                   detail="Runway is bringing the live avatar online so you can talk directly with it in real time."
+                  theme={theme}
                 />
               );
             }
@@ -113,19 +158,30 @@ function RunwaySessionSurface({ character }: { character: any }) {
                 character={character}
                 label={avatar.status === "connecting" ? "Connecting" : "Preparing video"}
                 detail="Runway is bringing the live avatar online so you can talk directly with it in real time."
+                theme={theme}
               />
             );
           }}
         </AvatarVideo>
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-5">
-          <p className="max-w-xl text-sm leading-relaxed text-white/75">{character.bio}</p>
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 p-5",
+            isLight ? "bg-gradient-to-t from-[#f6f2ea] via-[#f6f2ea]/75 to-transparent" : "bg-gradient-to-t from-black/75 via-black/35 to-transparent"
+          )}
+        >
+          <p className={cn("max-w-xl text-sm leading-relaxed", isLight ? "text-slate-600" : "text-white/75")}>{character.bio}</p>
         </div>
 
         <UserVideo mirror>
           {(user) =>
             user.hasVideo && user.trackRef && isTrackReference(user.trackRef) ? (
-              <div className="absolute bottom-4 right-4 h-28 w-20 overflow-hidden rounded-2xl border border-white/15 bg-black/60 shadow-2xl shadow-black/30 backdrop-blur-sm">
+              <div
+                className={cn(
+                  "absolute bottom-4 right-4 h-28 w-20 overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-sm",
+                  isLight ? "border-white/80 bg-white/70 shadow-slate-300/50" : "border-white/15 bg-black/60 shadow-black/30"
+                )}
+              >
                 <VideoTrack trackRef={user.trackRef} className="h-full w-full object-cover" />
               </div>
             ) : null
@@ -136,12 +192,15 @@ function RunwaySessionSurface({ character }: { character: any }) {
       <ControlBar showScreenShare>
         {(controls) => (
           <div className="mt-4 flex flex-wrap justify-center gap-3">
-            <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-4 w-4" />} />
-            <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-4 w-4" />} />
-            <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-4 w-4" />} />
+            <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-4 w-4" />} theme={theme} />
+            <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-4 w-4" />} theme={theme} />
+            <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-4 w-4" />} theme={theme} />
             <button
               onClick={() => void controls.endCall()}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-red-500/85 px-5 text-sm font-medium text-white transition-colors hover:bg-red-500"
+              className={cn(
+                "inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium text-white transition-colors",
+                theme === "light" ? "bg-rose-500 hover:bg-rose-600" : "bg-red-500/85 hover:bg-red-500"
+              )}
             >
               <PhoneOff className="h-4 w-4" />
               End live call
@@ -158,18 +217,26 @@ function LiveControlButton({
   onClick,
   label,
   icon,
+  theme,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   icon: ReactNode;
+  theme: RoomTheme;
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
         "inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
-        active ? "bg-white/12 text-white hover:bg-white/18" : "bg-white/5 text-white/55 hover:bg-white/10"
+        theme === "light"
+          ? active
+            ? "bg-slate-900 text-white hover:bg-slate-700"
+            : "bg-white text-slate-700 hover:bg-slate-100"
+          : active
+            ? "bg-white/12 text-white hover:bg-white/18"
+            : "bg-white/5 text-white/55 hover:bg-white/10"
       )}
     >
       {icon}
@@ -187,6 +254,28 @@ export function RunwayLiveRoom({
 }) {
   const [attempt, setAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>({ status: "connecting" });
+  const [showTranscript, setShowTranscript] = useState(true);
+  const [roomTheme, setRoomTheme] = useState<RoomTheme>("light");
+  const isLight = roomTheme === "light";
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(ROOM_THEME_STORAGE_KEY);
+      if (stored === "light" || stored === "dark") {
+        setRoomTheme(stored);
+      }
+    } catch {
+      /* ignore storage failures */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ROOM_THEME_STORAGE_KEY, roomTheme);
+    } catch {
+      /* ignore storage failures */
+    }
+  }, [roomTheme]);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,9 +327,23 @@ export function RunwayLiveRoom({
   const canRetry = connection.status === "error" || connection.status === "ended";
 
   return (
-    <div className="room-backdrop min-h-screen text-white">
-      <header className="z-10 flex items-center justify-between px-5 py-4">
-        <Link href="/lobby" className="flex items-center gap-2 text-sm text-white/50 transition-colors hover:text-white/80">
+    <div className={cn("relative min-h-screen transition-colors duration-500", isLight ? "bg-[#f8f6f1] text-slate-900" : "room-backdrop text-white")}>
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0",
+          isLight
+            ? "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.95),_rgba(246,241,233,0.72)_34%,_rgba(232,227,220,0.45)_100%)]"
+            : "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_rgba(0,0,0,0)_38%)]"
+        )}
+      />
+      <header className="relative z-10 flex items-center justify-between px-4 py-4 sm:px-6">
+        <Link
+          href="/lobby"
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm transition-colors",
+            isLight ? "bg-white/80 text-slate-600 hover:text-slate-900" : "bg-white/10 text-white/50 hover:text-white/80"
+          )}
+        >
           <ArrowLeft className="h-4 w-4" />
           Leave
         </Link>
@@ -248,21 +351,49 @@ export function RunwayLiveRoom({
           {onUseFallback && (
             <button
               onClick={onUseFallback}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-[12px] font-medium text-white/70 transition-colors hover:bg-white/10"
+              className={cn(
+                "inline-flex h-10 items-center gap-2 rounded-full px-4 text-[12px] font-medium transition-colors",
+                isLight
+                  ? "bg-slate-900 text-white hover:bg-slate-700"
+                  : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+              )}
             >
               <MessageCircleMore className="h-3.5 w-3.5" />
               Use fallback chat
             </button>
           )}
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-300/10 px-3 py-1.5 text-[11px] font-medium text-emerald-100">
-            <span className="live-dot" style={{ width: 6, height: 6 }} />
-            Default live session
-          </div>
+
+          <button
+            onClick={() => setRoomTheme((current) => (current === "light" ? "dark" : "light"))}
+            className={cn(
+              "inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors",
+              isLight ? "bg-white/80 text-slate-600 hover:text-slate-900" : "bg-white/10 text-white/60 hover:text-white"
+            )}
+            aria-label="Toggle room theme"
+          >
+            {isLight ? <MoonStar className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />}
+          </button>
+
+          <button
+            onClick={() => setShowTranscript((current) => !current)}
+            className={cn(
+              "inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors",
+              isLight ? "bg-white/80 text-slate-600 hover:text-slate-900" : "bg-white/10 text-white/60 hover:text-white"
+            )}
+            aria-label="Toggle transcript"
+          >
+            <MessageCircle className="h-4 w-4" />
+          </button>
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-6 lg:h-[calc(100vh-6.5rem)] lg:flex-row lg:overflow-hidden lg:pb-8">
-        <div className="min-w-0 flex-1 lg:min-h-0">
+      <div
+        className={cn(
+          "relative z-10 mx-auto grid max-w-7xl gap-6 px-5 pb-6 lg:h-[calc(100vh-6.5rem)] lg:overflow-hidden lg:pb-8",
+          showTranscript ? "lg:grid-cols-[minmax(0,1fr)_26rem]" : "lg:grid-cols-1"
+        )}
+      >
+        <div className="min-w-0 lg:min-h-0">
           {connection.status === "ready" ? (
             <AvatarSession
               key={`${character.id}:${attempt}`}
@@ -272,23 +403,38 @@ export function RunwayLiveRoom({
               onEnd={() => setConnection({ status: "ended" })}
               onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
             >
-              <RunwaySessionSurface character={character} />
+              <RunwaySessionSurface character={character} theme={roomTheme} />
             </AvatarSession>
           ) : connection.status === "connecting" ? (
             <CharacterPlaceholder
               character={character}
               label="Starting live session"
               detail="This room now opens straight into the Runway live avatar call. Give it a moment while we fetch fresh connection credentials."
+              theme={roomTheme}
             />
           ) : (
-            <div className="flex min-h-[32rem] flex-col items-center justify-center rounded-[28px] border border-white/10 bg-black/50 px-6 text-center">
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-red-300/20 bg-red-300/10">
-                {connection.status === "ended" ? <PhoneOff className="h-6 w-6 text-red-100" /> : <AlertCircle className="h-6 w-6 text-red-100" />}
+            <div
+              className={cn(
+                "flex min-h-[32rem] flex-col items-center justify-center rounded-[28px] border px-6 text-center",
+                isLight ? "border-white/70 bg-white/58" : "border-white/10 bg-black/50"
+              )}
+            >
+              <div
+                className={cn(
+                  "mb-5 flex h-16 w-16 items-center justify-center rounded-full border",
+                  isLight ? "border-red-200 bg-red-50" : "border-red-300/20 bg-red-300/10"
+                )}
+              >
+                {connection.status === "ended" ? (
+                  <PhoneOff className={cn("h-6 w-6", isLight ? "text-red-600" : "text-red-100")} />
+                ) : (
+                  <AlertCircle className={cn("h-6 w-6", isLight ? "text-red-600" : "text-red-100")} />
+                )}
               </div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-red-100/85">
+              <p className={cn("text-sm font-semibold uppercase tracking-[0.22em]", isLight ? "text-red-600" : "text-red-100/85")}>
                 {connection.status === "ended" ? "Live call ended" : "Runway live unavailable"}
               </p>
-              <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/65">
+              <p className={cn("mt-3 max-w-lg text-sm leading-relaxed", isLight ? "text-slate-600" : "text-white/65")}>
                 {connection.status === "ended"
                   ? "The Runway live session has ended. You can start a fresh session right away."
                   : connection.error}
@@ -297,7 +443,10 @@ export function RunwayLiveRoom({
                 {canRetry && (
                   <button
                     onClick={() => setAttempt((current) => current + 1)}
-                    className="inline-flex h-11 items-center gap-2 rounded-full bg-white/10 px-5 text-sm font-medium text-white transition-colors hover:bg-white/15"
+                    className={cn(
+                      "inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-medium transition-colors",
+                      isLight ? "bg-slate-900 text-white hover:bg-slate-700" : "bg-white/10 text-white hover:bg-white/15"
+                    )}
                   >
                     <RefreshCw className="h-4 w-4" />
                     Retry live session
@@ -306,7 +455,12 @@ export function RunwayLiveRoom({
                 {onUseFallback && (
                   <button
                     onClick={onUseFallback}
-                    className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 text-sm font-medium text-white/75 transition-colors hover:bg-white/10"
+                    className={cn(
+                      "inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-medium transition-colors",
+                      isLight
+                        ? "bg-white text-slate-700 shadow-sm hover:bg-slate-100"
+                        : "border border-white/10 bg-white/5 text-white/75 hover:bg-white/10"
+                    )}
                   >
                     <Video className="h-4 w-4" />
                     Open fallback chat
@@ -317,9 +471,11 @@ export function RunwayLiveRoom({
           )}
         </div>
 
-        <div className="w-full lg:flex lg:min-h-0 lg:w-[23rem] lg:max-w-sm lg:flex-shrink-0">
-          <LiveConversationSidebar character={character} />
-        </div>
+        {showTranscript && (
+          <div className="w-full lg:flex lg:min-h-0 lg:w-[26rem] lg:flex-shrink-0">
+            <LiveConversationSidebar character={character} theme={roomTheme} />
+          </div>
+        )}
       </div>
     </div>
   );

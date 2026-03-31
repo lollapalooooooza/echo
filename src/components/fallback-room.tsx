@@ -44,6 +44,7 @@ interface ArticleRef {
 }
 
 type RoomTheme = "light" | "dark";
+const ROOM_THEME_STORAGE_KEY = "echonest-room-theme";
 
 export function FallbackRoom({
   character,
@@ -84,6 +85,8 @@ export function FallbackRoom({
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const energyRef = useRef(0);
+  const transcriptRevealFrameRef = useRef<number | null>(null);
+  const revealInterruptedRef = useRef(false);
   const recRef = useRef<any>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -96,7 +99,7 @@ export function FallbackRoom({
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem("fallback-room-theme");
+      const stored = window.localStorage.getItem(ROOM_THEME_STORAGE_KEY);
       if (stored === "light" || stored === "dark") {
         setRoomTheme(stored);
       }
@@ -107,11 +110,27 @@ export function FallbackRoom({
 
   useEffect(() => {
     try {
-      window.localStorage.setItem("fallback-room-theme", roomTheme);
+      window.localStorage.setItem(ROOM_THEME_STORAGE_KEY, roomTheme);
     } catch {
       /* ignore storage failures */
     }
   }, [roomTheme]);
+
+  const stopTranscriptReveal = useCallback((options?: { finalize?: boolean; assistantId?: string; text?: string }) => {
+    if (transcriptRevealFrameRef.current) {
+      window.cancelAnimationFrame(transcriptRevealFrameRef.current);
+      transcriptRevealFrameRef.current = null;
+    }
+
+    if (options?.finalize && options.assistantId && options.text) {
+      setSubtitle(options.text);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === options.assistantId ? { ...message, content: options.text!, streaming: false } : message
+        )
+      );
+    }
+  }, []);
 
   const stopVoiceVisualization = useCallback(() => {
     if (animationFrameRef.current) {
@@ -120,6 +139,85 @@ export function FallbackRoom({
     }
     energyRef.current = 0;
     setVoiceEnergy(0);
+  }, []);
+
+  const revealTranscriptWithAudio = useCallback(
+    (assistantId: string, text: string) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+
+      stopTranscriptReveal();
+      revealInterruptedRef.current = false;
+
+      const segments = buildNarrationSegments(text);
+      if (segments.length === 0) {
+        stopTranscriptReveal({ finalize: true, assistantId, text });
+        return;
+      }
+
+      const estimatedDuration = Math.max(text.split(/\s+/).filter(Boolean).length / 2.75, 2.4);
+      let lastVisibleText = "";
+
+      const tick = () => {
+        const duration =
+          Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : estimatedDuration;
+        const progress =
+          duration > 0 ? Math.min(1, Math.max(0, audio.currentTime / duration)) : 1;
+        const visibleCount = Math.min(
+          segments.length,
+          Math.max(1, Math.ceil(progress * segments.length))
+        );
+        const visibleText = segments.slice(0, visibleCount).join(" ");
+
+        if (visibleText !== lastVisibleText) {
+          lastVisibleText = visibleText;
+          setSubtitle(visibleText);
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId
+                ? { ...message, content: visibleText, streaming: visibleCount < segments.length }
+                : message
+            )
+          );
+        }
+
+        if (!revealInterruptedRef.current && !audio.ended && (!audio.paused || audio.currentTime > 0) && progress < 0.999) {
+          transcriptRevealFrameRef.current = window.requestAnimationFrame(tick);
+          return;
+        }
+
+        if (!revealInterruptedRef.current) {
+          stopTranscriptReveal({ finalize: true, assistantId, text });
+        } else {
+          stopTranscriptReveal();
+        }
+      };
+
+      tick();
+    },
+    [stopTranscriptReveal]
+  );
+
+  const waitForAudioReady = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (Number.isFinite(audio.duration) && audio.duration > 0) return;
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        audio.removeEventListener("loadedmetadata", finish);
+        audio.removeEventListener("canplay", finish);
+        window.clearTimeout(timeoutId);
+        resolve();
+      };
+
+      const timeoutId = window.setTimeout(finish, 900);
+      audio.addEventListener("loadedmetadata", finish, { once: true });
+      audio.addEventListener("canplay", finish, { once: true });
+    });
   }, []);
 
   const ensureVoiceVisualizer = useCallback(async () => {
@@ -222,6 +320,9 @@ export function FallbackRoom({
       if (animationFrameRef.current) {
         window.cancelAnimationFrame(animationFrameRef.current);
       }
+      if (transcriptRevealFrameRef.current) {
+        window.cancelAnimationFrame(transcriptRevealFrameRef.current);
+      }
       void audioContextRef.current?.close().catch(() => undefined);
     };
   }, [startVoiceVisualization, stopVoiceVisualization]);
@@ -230,14 +331,8 @@ export function FallbackRoom({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, showTranscript]);
 
-  useEffect(() => {
-    if (!subtitle || speaking || loading) return;
-    const timeout = window.setTimeout(() => setSubtitle(""), 1800);
-    return () => window.clearTimeout(timeout);
-  }, [loading, speaking, subtitle]);
-
   const playAudio = useCallback(
-    async (b64: string) => {
+    async (b64: string, assistantId?: string, transcriptText?: string) => {
       if (speakerOff || !audioRef.current) return;
 
       const bytes = atob(b64);
@@ -249,20 +344,31 @@ export function FallbackRoom({
       }
       audioUrlRef.current = URL.createObjectURL(new Blob([arr], { type: "audio/mpeg" }));
       audioRef.current.src = audioUrlRef.current;
+      audioRef.current.load();
       setAudioIssue("");
+      revealInterruptedRef.current = false;
 
       try {
+        await waitForAudioReady();
         await audioRef.current.play();
+        if (assistantId && transcriptText) {
+          revealTranscriptWithAudio(assistantId, transcriptText);
+        }
       } catch {
         setSpeaking(false);
         stopVoiceVisualization();
+        if (assistantId && transcriptText) {
+          stopTranscriptReveal({ finalize: true, assistantId, text: transcriptText });
+        }
         setAudioIssue("Voice was generated, but the browser blocked autoplay. Tap the speaker and try again.");
       }
     },
-    [speakerOff, stopVoiceVisualization]
+    [revealTranscriptWithAudio, speakerOff, stopTranscriptReveal, stopVoiceVisualization, waitForAudioReady]
   );
 
   const interrupt = useCallback(() => {
+    revealInterruptedRef.current = true;
+    stopTranscriptReveal();
     audioRef.current?.pause();
     setSpeaking(false);
     stopVoiceVisualization();
@@ -270,7 +376,7 @@ export function FallbackRoom({
     abortRef.current = null;
     setLoading(false);
     setMessages((current) => current.map((message) => (message.streaming ? { ...message, streaming: false } : message)));
-  }, [stopVoiceVisualization]);
+  }, [stopTranscriptReveal, stopVoiceVisualization]);
 
   const toggleListen = useCallback(() => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
@@ -322,6 +428,7 @@ export function FallbackRoom({
       if (loading || speaking) interrupt();
 
       setAudioIssue("");
+      setSubtitle("");
       setMessages((current) => [...current, { id: `u${Date.now()}`, role: "user", content: text }]);
       setInput("");
       setLoading(true);
@@ -384,10 +491,12 @@ export function FallbackRoom({
             switch (eventLine[1].trim()) {
               case "text":
                 full += data.chunk;
-                setSubtitle(full);
-                setMessages((current) =>
-                  current.map((message) => (message.id === assistantId ? { ...message, content: full } : message))
-                );
+                if (speakerOff) {
+                  setSubtitle(full);
+                  setMessages((current) =>
+                    current.map((message) => (message.id === assistantId ? { ...message, content: full } : message))
+                  );
+                }
                 break;
               case "sources":
                 sources = data;
@@ -403,9 +512,10 @@ export function FallbackRoom({
                 break;
               case "audio":
                 receivedAudio = true;
-                void playAudio(data.audioBase64);
+                void playAudio(data.audioBase64, assistantId, full);
                 break;
               case "audio_error":
+                stopTranscriptReveal({ finalize: true, assistantId, text: full });
                 setAudioIssue(data.error || "Voice synthesis failed for this reply.");
                 break;
               case "video":
@@ -414,11 +524,20 @@ export function FallbackRoom({
                 break;
               case "done":
                 if (data.conversationId) setConvId(data.conversationId);
-                setMessages((current) =>
-                  current.map((message) =>
-                    message.id === assistantId ? { ...message, streaming: false, sources, articles } : message
-                  )
-                );
+                if (speakerOff || !receivedAudio) {
+                  setMessages((current) =>
+                    current.map((message) =>
+                      message.id === assistantId ? { ...message, content: full, streaming: false, sources, articles } : message
+                    )
+                  );
+                  setSubtitle(full);
+                } else {
+                  setMessages((current) =>
+                    current.map((message) =>
+                      message.id === assistantId ? { ...message, sources, articles } : message
+                    )
+                  );
+                }
                 if (!speakerOff && !receivedAudio) {
                   setAudioIssue("No voice clip was returned for this reply. This character may not have a usable ElevenLabs voice attached.");
                 }
@@ -431,7 +550,15 @@ export function FallbackRoom({
         }
 
         setMessages((current) =>
-          current.map((message) => (message.id === assistantId ? { ...message, streaming: false } : message))
+          current.map((message) =>
+            message.id === assistantId && (speakerOff || !receivedAudio)
+              ? {
+                  ...message,
+                  content: message.content || full,
+                  streaming: false,
+                }
+              : message
+          )
         );
       } catch (error: any) {
         if (error.name === "AbortError") {
@@ -454,7 +581,7 @@ export function FallbackRoom({
         inputRef.current?.focus();
       }
     },
-    [character.id, convId, interrupt, loading, messages, playAudio, slug, speakerOff, speaking]
+    [character.id, convId, interrupt, loading, messages, playAudio, slug, speakerOff, speaking, stopTranscriptReveal]
   );
 
   const hasVideo = !!(videoUrls.idle || videoUrls.speaking);
@@ -546,17 +673,17 @@ export function FallbackRoom({
         )}
       >
         <div className="flex min-w-0 flex-col items-center justify-between px-4 pb-6 pt-2 sm:px-6 lg:min-h-0 lg:px-10">
-          <div className="flex w-full max-w-4xl flex-1 flex-col items-center justify-center">
+          <div className="flex w-full max-w-4xl flex-1 flex-col items-center justify-start pt-2 sm:pt-3">
             <div
               className={cn(
-                "mb-5 rounded-full px-4 py-1.5 text-[11px] font-medium tracking-[0.18em] uppercase",
+                "mb-4 rounded-full px-4 py-1.5 text-[11px] font-medium tracking-[0.18em] uppercase",
                 isLight ? "bg-white/80 text-slate-500 shadow-sm" : "bg-white/10 text-white/60"
               )}
             >
               fallback session
             </div>
 
-            <div className="relative mb-8 flex items-center justify-center">
+            <div className="relative mb-5 flex items-center justify-center">
               {(speaking || loading) && (
                 <>
                   <div
@@ -602,7 +729,7 @@ export function FallbackRoom({
 
               <div
                 className={cn(
-                  "relative h-56 w-56 overflow-hidden rounded-full border shadow-2xl transition-all duration-150 sm:h-64 sm:w-64",
+                  "relative h-52 w-52 overflow-hidden rounded-full border shadow-2xl transition-all duration-150 sm:h-60 sm:w-60",
                   isLight
                     ? "border-white/80 bg-white/70 shadow-amber-100"
                     : "border-white/10 bg-white/5 shadow-black/30"
@@ -638,7 +765,7 @@ export function FallbackRoom({
               </div>
             </div>
 
-            <div className="mb-4 text-center">
+            <div className="mb-2 text-center">
               <h2 className="text-[2rem] font-semibold tracking-[-0.04em]" style={{ fontFamily: "var(--font-display)" }}>
                 {character.name}
               </h2>
@@ -647,62 +774,76 @@ export function FallbackRoom({
               </p>
             </div>
 
-            {(subtitle || speaking || loading) && (
-              <div className="relative mb-10 flex h-40 w-full max-w-3xl items-center justify-center overflow-hidden px-4 sm:h-48">
-                <div
-                  className={cn(
-                    "pointer-events-none absolute inset-x-0 top-0 h-12",
-                    isLight
-                      ? "bg-gradient-to-b from-[#f8f6f1] via-[#f8f6f1]/85 to-transparent"
-                      : "bg-gradient-to-b from-[rgba(6,6,8,0.92)] via-[rgba(6,6,8,0.72)] to-transparent"
-                  )}
-                />
-                <div
-                  className={cn(
-                    "pointer-events-none absolute inset-x-0 bottom-0 h-12",
-                    isLight
-                      ? "bg-gradient-to-t from-[#f8f6f1] via-[#f8f6f1]/85 to-transparent"
-                      : "bg-gradient-to-t from-[rgba(6,6,8,0.92)] via-[rgba(6,6,8,0.72)] to-transparent"
-                  )}
-                />
-                <div className="flex w-full max-w-2xl flex-col items-center justify-center gap-2 text-center">
-                  {lyricQueue.map((line, index) => {
-                    const distance = activeLyricIndex - index;
+            <div className="relative mb-6 flex h-44 w-full max-w-3xl items-center justify-center overflow-hidden px-4 sm:h-48">
+              <div
+                className={cn(
+                  "absolute inset-x-8 inset-y-6 rounded-[32px] opacity-90 blur-2xl",
+                  isLight
+                    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.16)_36%,rgba(255,255,255,0))]"
+                    : "bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05)_36%,rgba(255,255,255,0))]"
+                )}
+              />
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-x-10 inset-y-4 rounded-[36px]",
+                  isLight
+                    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.35),rgba(255,255,255,0.08)_32%,rgba(255,255,255,0))]"
+                    : "bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03)_32%,rgba(255,255,255,0))]"
+                )}
+              />
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-x-0 top-0 h-16",
+                  isLight
+                    ? "bg-gradient-to-b from-[#f8f6f1] via-[#f8f6f1]/88 to-transparent"
+                    : "bg-gradient-to-b from-[rgba(6,6,8,0.92)] via-[rgba(6,6,8,0.72)] to-transparent"
+                )}
+              />
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-x-0 bottom-0 h-20",
+                  isLight
+                    ? "bg-gradient-to-t from-[#f8f6f1] via-[#f8f6f1]/94 to-transparent"
+                    : "bg-gradient-to-t from-[rgba(6,6,8,0.95)] via-[rgba(6,6,8,0.72)] to-transparent"
+                )}
+              />
+              <div className="flex w-full max-w-2xl flex-col items-center justify-center gap-2 text-center">
+                {lyricQueue.map((line, index) => {
+                  const distance = activeLyricIndex - index;
 
-                    return (
-                      <p
-                        key={`${line}-${index}`}
-                        className={cn(
-                          "max-w-2xl animate-fade-in leading-tight transition-all duration-300",
-                          distance === 0
+                  return (
+                    <p
+                      key={`${line}-${index}`}
+                      className={cn(
+                        "max-w-2xl animate-fade-in leading-tight transition-all duration-300",
+                        distance === 0
+                          ? isLight
+                            ? "text-[1.4rem] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[1.78rem]"
+                            : "text-[1.4rem] font-semibold tracking-[-0.03em] text-white sm:text-[1.78rem]"
+                          : distance === 1
                             ? isLight
-                              ? "text-[1.4rem] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[1.75rem]"
-                              : "text-[1.4rem] font-semibold tracking-[-0.03em] text-white sm:text-[1.75rem]"
+                              ? "text-base text-slate-400 blur-[0.45px] sm:text-lg"
+                              : "text-base text-white/45 blur-[0.45px] sm:text-lg"
+                            : isLight
+                              ? "text-sm text-slate-300 blur-[1.2px]"
+                              : "text-sm text-white/25 blur-[1.2px]"
+                      )}
+                      style={{
+                        opacity: distance === 0 ? 1 : distance === 1 ? 0.62 : 0.18,
+                        transform:
+                          distance === 0
+                            ? "translateY(0) scale(1.05)"
                             : distance === 1
-                              ? isLight
-                                ? "text-base text-slate-400 blur-[0.3px] sm:text-lg"
-                                : "text-base text-white/45 blur-[0.3px] sm:text-lg"
-                              : isLight
-                                ? "text-sm text-slate-300 blur-[0.9px]"
-                                : "text-sm text-white/25 blur-[0.9px]"
-                        )}
-                        style={{
-                          opacity: distance === 0 ? 1 : distance === 1 ? 0.68 : 0.28,
-                          transform:
-                            distance === 0
-                              ? "translateY(0) scale(1.05)"
-                              : distance === 1
-                                ? "translateY(-6px) scale(0.94)"
-                                : `translateY(-${10 + distance * 4}px) scale(0.88)`,
-                        }}
-                      >
-                        {line}
-                      </p>
-                    );
-                  })}
-                </div>
+                              ? "translateY(-10px) scale(0.94)"
+                              : `translateY(-${14 + distance * 6}px) scale(0.86)`,
+                      }}
+                    >
+                      {line}
+                    </p>
+                  );
+                })}
               </div>
-            )}
+            </div>
 
             {audioIssue && (
               <div
@@ -717,11 +858,8 @@ export function FallbackRoom({
 
             {!started && (
               <div className="w-full max-w-2xl animate-fade-in text-center">
-                <p className={cn("mx-auto mb-3 max-w-xl text-base leading-7", isLight ? "text-slate-700" : "text-white/75")}>
-                  {character.greeting}
-                </p>
                 <p className={cn("mb-6 text-[13px]", isLight ? "text-slate-400" : "text-white/35")}>
-                  A lighter fallback room for text, voice, and citation previews when Runway live is unavailable.
+                  Voice-led fallback room with synced captions and source previews when Runway live is unavailable.
                 </p>
                 <div className="flex flex-wrap justify-center gap-2.5">
                   {(character.suggestedQuestions || []).map((question: string, index: number) => (
@@ -1020,36 +1158,49 @@ export function FallbackRoom({
 }
 
 function buildLyricLines(text: string) {
+  return buildNarrationSegments(text).slice(-4);
+}
+
+function buildNarrationSegments(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return [];
 
-  const punctuated = normalized
+  const sentenceParts = normalized
     .split(/(?<=[.!?])\s+|(?<=,)\s+|(?<=;)\s+/)
-    .map((line) => line.trim())
+    .map((part) => part.trim())
     .filter(Boolean);
 
-  const lines = punctuated.length > 0
-    ? punctuated
-    : normalized
-        .split(/\s+/)
-        .reduce<string[]>((chunks, word) => {
-          const current = chunks[chunks.length - 1] || "";
-          if (!current) {
-            chunks.push(word);
-            return chunks;
-          }
+  if (sentenceParts.length > 0) {
+    return sentenceParts.flatMap((part) => {
+      const words = part.split(/\s+/).filter(Boolean);
+      if (words.length <= 9) return [part];
 
-          if (current.split(/\s+/).length >= 7) {
-            chunks.push(word);
-            return chunks;
-          }
+      const chunks: string[] = [];
+      for (let index = 0; index < words.length; index += 6) {
+        chunks.push(words.slice(index, index + 6).join(" "));
+      }
+      return chunks;
+    });
+  }
 
-          chunks[chunks.length - 1] = `${current} ${word}`;
-          return chunks;
-        }, [])
-        .filter(Boolean);
+  return normalized
+    .split(/\s+/)
+    .reduce<string[]>((chunks, word) => {
+      const current = chunks[chunks.length - 1] || "";
+      if (!current) {
+        chunks.push(word);
+        return chunks;
+      }
 
-  return lines.slice(-4);
+      if (current.split(/\s+/).length >= 6) {
+        chunks.push(word);
+        return chunks;
+      }
+
+      chunks[chunks.length - 1] = `${current} ${word}`;
+      return chunks;
+    }, [])
+    .filter(Boolean);
 }
 
 function truncateBio(value?: string | null) {

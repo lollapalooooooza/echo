@@ -44,6 +44,7 @@ type RecognitionInstance = {
   onend: (() => void) | null;
   onerror: ((event?: any) => void) | null;
 };
+type RoomTheme = "light" | "dark";
 
 function readSseBlocks(buffer: string) {
   const parts = buffer.split("\n\n");
@@ -90,7 +91,13 @@ function isLikelyEcho(candidate: string, messages: SidebarMessage[]) {
   });
 }
 
-export function LiveConversationSidebar({ character }: { character: any }) {
+export function LiveConversationSidebar({
+  character,
+  theme = "light",
+}: {
+  character: any;
+  theme?: RoomTheme;
+}) {
   const [messages, setMessages] = useState<SidebarMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -117,6 +124,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
     () => typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window),
     []
   );
+  const isLight = theme === "light";
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -439,16 +447,28 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           : "Reconnecting to your mic";
 
   return (
-    <aside className="flex h-[min(42rem,calc(100vh-10rem))] max-h-[calc(100vh-10rem)] min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-black/30 backdrop-blur-sm lg:h-full lg:max-h-full lg:min-h-0">
-      <div className="border-b border-white/10 px-5 py-4">
+    <aside
+      className={cn(
+        "flex h-[min(42rem,calc(100vh-10rem))] max-h-[calc(100vh-10rem)] min-w-0 flex-col overflow-hidden rounded-[30px] border backdrop-blur-2xl lg:h-full lg:max-h-full lg:min-h-0",
+        isLight
+          ? "border-white/75 bg-white/52 shadow-xl shadow-slate-200/70"
+          : "border-white/10 bg-black/28 shadow-xl shadow-black/30"
+      )}
+    >
+      <div className={cn("border-b px-5 py-4", isLight ? "border-slate-200/70" : "border-white/10")}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-emerald-100/65">
+            <div
+              className={cn(
+                "flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em]",
+                isLight ? "text-slate-400" : "text-emerald-100/65"
+              )}
+            >
               <Sparkles className="h-3.5 w-3.5" />
-              Dual-Channel Transcript
+              transcript
             </div>
-            <p className="mt-2 text-sm leading-relaxed text-white/72">
-              This panel now auto-listens for your turn, pauses while the character answers, and keeps both sides in separate lanes so the conversation log stays readable.
+            <p className={cn("mt-2 text-sm leading-relaxed", isLight ? "text-slate-600" : "text-white/72")}>
+              Live notes, source cards, and article previews that stay aligned with the room on the left.
             </p>
           </div>
         </div>
@@ -461,25 +481,34 @@ export function LiveConversationSidebar({ character }: { character: any }) {
             className={cn(
               "inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[12px] font-medium transition-colors",
               autoCaptureEnabled
-                ? "bg-emerald-400/15 text-emerald-100"
-                : "bg-white/5 text-white/60 hover:bg-white/10",
+                ? isLight
+                  ? "bg-emerald-500/12 text-emerald-700"
+                  : "bg-emerald-400/15 text-emerald-100"
+                : isLight
+                  ? "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  : "bg-white/5 text-white/60 hover:bg-white/10",
               !supportsSpeech && "cursor-not-allowed opacity-50"
             )}
           >
             {autoCaptureEnabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {autoCaptureEnabled ? "Pause auto voice" : "Resume auto voice"}
           </button>
-          <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-white/45">
+          <span
+            className={cn(
+              "rounded-full border px-3 py-1 text-[11px]",
+              isLight ? "border-slate-200 bg-white/70 text-slate-400" : "border-white/10 text-white/45"
+            )}
+          >
             {captureStatusLabel}
           </span>
         </div>
 
         {interimTranscript && (
-          <p className="mt-2 text-[12px] text-white/45">
+          <p className={cn("mt-2 text-[12px]", isLight ? "text-slate-400" : "text-white/45")}>
             Hearing you: {interimTranscript}
           </p>
         )}
-        {captureError && <p className="mt-2 text-[12px] text-amber-200/85">{captureError}</p>}
+        {captureError && <p className={cn("mt-2 text-[12px]", isLight ? "text-amber-700" : "text-amber-200/85")}>{captureError}</p>}
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-4 scroll-smooth">
@@ -492,9 +521,9 @@ export function LiveConversationSidebar({ character }: { character: any }) {
             </div>
           )}
           <div>
-            <p className="mb-0.5 text-[11px] text-white/40">{character.name}</p>
-            <p className="text-[13px] leading-relaxed text-white/65">
-              Ask here for a saved transcript, source cards, and analytics-friendly notes while the live room keeps running.
+            <p className={cn("mb-0.5 text-[11px]", isLight ? "text-slate-400" : "text-white/40")}>{character.name}</p>
+            <p className={cn("text-[13px] leading-relaxed", isLight ? "text-slate-600" : "text-white/65")}>
+              Auto-capture keeps both speakers separated so the saved conversation stays readable.
             </p>
           </div>
         </div>
@@ -505,7 +534,12 @@ export function LiveConversationSidebar({ character }: { character: any }) {
               <button
                 key={index}
                 onClick={() => enqueueMessage(question)}
-                className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-[12px] text-white/70 transition-colors hover:border-white/20 hover:bg-white/10"
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 text-[12px] transition-colors",
+                  isLight
+                    ? "bg-white text-slate-700 shadow-sm hover:bg-slate-100"
+                    : "border border-white/10 bg-white/5 text-white/70 hover:border-white/20 hover:bg-white/10"
+                )}
               >
                 {question}
               </button>
@@ -524,21 +558,34 @@ export function LiveConversationSidebar({ character }: { character: any }) {
                 </div>
               )
             ) : (
-              <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-[11px] font-semibold text-emerald-100">
+              <div
+                className={cn(
+                  "mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                  isLight ? "bg-slate-900 text-white" : "bg-emerald-400/15 text-emerald-100"
+                )}
+              >
                 You
               </div>
             )}
 
             <div className={cn("max-w-[88%]", message.role === "user" && "text-right")}>
-              <p className="mb-1 text-[11px] text-white/35">{message.role === "user" ? "You" : character.name}</p>
+              <p className={cn("mb-1 text-[11px]", isLight ? "text-slate-400" : "text-white/35")}>
+                {message.role === "user" ? "You" : character.name}
+              </p>
               <div
                 className={cn(
                   "rounded-2xl px-3.5 py-3 text-[13px] leading-relaxed",
-                  message.role === "user" ? "bg-emerald-400/14 text-white" : "bg-white/6 text-white/76"
+                  message.role === "user"
+                    ? isLight
+                      ? "bg-slate-900 text-white"
+                      : "bg-emerald-400/14 text-white"
+                    : isLight
+                      ? "bg-white/78 text-slate-700 shadow-sm"
+                      : "bg-white/6 text-white/76"
                 )}
               >
                 {message.streaming && !message.content ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-white/40" />
+                  <Loader2 className={cn("h-3.5 w-3.5 animate-spin", isLight ? "text-slate-400" : "text-white/40")} />
                 ) : (
                   <p className="whitespace-pre-wrap">{message.content}</p>
                 )}
@@ -549,39 +596,63 @@ export function LiveConversationSidebar({ character }: { character: any }) {
                   {message.articles.map((article: ArticleReference) => (
                     <div
                       key={article.sourceId}
-                      className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition-colors hover:border-white/20"
+                      className={cn(
+                        "overflow-hidden rounded-[22px] border transition-colors",
+                        isLight
+                          ? "border-white/70 bg-white/60 hover:bg-white/75"
+                          : "border-white/10 bg-white/5 hover:border-white/20"
+                      )}
                     >
                       <button
                         onClick={() => setExpandedArticle(expandedArticle === article.sourceId ? null : article.sourceId)}
                         className="flex w-full items-start gap-3 px-3.5 py-3 text-left"
                       >
-                        <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-white/10">
-                          <FileText className="h-4 w-4 text-white/55" />
+                        <div
+                          className={cn(
+                            "mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl",
+                            isLight ? "bg-slate-100 text-slate-500" : "bg-white/10"
+                          )}
+                        >
+                          <FileText className={cn("h-4 w-4", isLight ? "text-slate-500" : "text-white/55")} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="line-clamp-2 text-[12px] font-medium leading-relaxed text-white/82">{article.title}</p>
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-white/45">{article.excerpt}</p>
+                          <p className={cn("line-clamp-2 text-[12px] font-medium leading-relaxed", isLight ? "text-slate-800" : "text-white/82")}>
+                            {article.title}
+                          </p>
+                          <p className={cn("mt-1 line-clamp-2 text-[11px] leading-relaxed", isLight ? "text-slate-500" : "text-white/45")}>
+                            {article.excerpt}
+                          </p>
                           {article.topic && (
-                            <span className="mt-2 inline-flex rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/55">
+                            <span
+                              className={cn(
+                                "mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px]",
+                                isLight ? "bg-slate-100 text-slate-500" : "bg-white/10 text-white/55"
+                              )}
+                            >
                               {article.topic}
                             </span>
                           )}
                         </div>
                         <ChevronRight
                           className={cn(
-                            "mt-1 h-3.5 w-3.5 flex-shrink-0 text-white/30 transition-transform",
+                            "mt-1 h-3.5 w-3.5 flex-shrink-0 transition-transform",
+                            isLight ? "text-slate-400" : "text-white/30",
                             expandedArticle === article.sourceId && "rotate-90"
                           )}
                         />
                       </button>
 
                       {expandedArticle === article.sourceId && (
-                        <div className="border-t border-white/10 px-3.5 py-3">
+                        <div className={cn("border-t px-3.5 py-3", isLight ? "border-slate-200/70" : "border-white/10")}>
                           <div className="space-y-1.5">
                             {article.chunks.map((chunk) => (
                               <div key={chunk.chunkId}>
-                                {chunk.heading && <p className="text-[10px] font-medium text-white/58">{chunk.heading}</p>}
-                                <p className="text-[10px] text-white/35">Relevance: {Math.round(chunk.score * 100)}%</p>
+                                {chunk.heading && (
+                                  <p className={cn("text-[10px] font-medium", isLight ? "text-slate-600" : "text-white/58")}>{chunk.heading}</p>
+                                )}
+                                <p className={cn("text-[10px]", isLight ? "text-slate-400" : "text-white/35")}>
+                                  Relevance: {Math.round(chunk.score * 100)}%
+                                </p>
                               </div>
                             ))}
                           </div>
@@ -590,7 +661,10 @@ export function LiveConversationSidebar({ character }: { character: any }) {
                               href={article.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-emerald-200 transition-colors hover:text-emerald-100"
+                              className={cn(
+                                "mt-3 inline-flex items-center gap-1.5 text-[11px] transition-colors",
+                                isLight ? "text-sky-600 hover:text-sky-700" : "text-emerald-200 hover:text-emerald-100"
+                              )}
                             >
                               Open original article
                               <ExternalLink className="h-3 w-3" />
@@ -611,7 +685,12 @@ export function LiveConversationSidebar({ character }: { character: any }) {
                       href={source.sourceUrl || "#"}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-full bg-white/8 px-2 py-0.5 text-[10px] text-white/48 transition-colors hover:text-white/70"
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition-colors",
+                        isLight
+                          ? "bg-white/85 text-slate-500 hover:text-slate-700"
+                          : "bg-white/8 text-white/48 hover:text-white/70"
+                      )}
                     >
                       <BookOpen className="h-2.5 w-2.5" />
                       {source.sourceTitle?.slice(0, 24)}…
@@ -629,24 +708,32 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           event.preventDefault();
           enqueueMessage(input);
         }}
-        className="border-t border-white/10 px-4 py-3"
+        className={cn("border-t px-4 py-3", isLight ? "border-slate-200/70" : "border-white/10")}
       >
         <div className="flex items-center gap-2">
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder={loading ? `${character.name} is replying…` : "Type here if you want to log or clarify a turn manually…"}
-            className="h-10 flex-1 rounded-2xl border border-white/10 bg-white/5 px-3.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/20"
+            className={cn(
+              "h-10 flex-1 rounded-2xl border px-3.5 text-sm outline-none transition-colors",
+              isLight
+                ? "border-slate-200 bg-[#faf8f4] text-slate-900 placeholder:text-slate-400 focus:border-slate-300"
+                : "border-white/10 bg-white/5 text-white placeholder:text-white/30 focus:border-white/20"
+            )}
           />
           <button
             type="submit"
             disabled={!input.trim()}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white/70 transition-colors hover:bg-white/15 disabled:opacity-30"
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-2xl transition-colors disabled:opacity-30",
+              isLight ? "bg-slate-900 text-white hover:bg-slate-700" : "bg-white/10 text-white/70 hover:bg-white/15"
+            )}
           >
             <Send className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/35">
+        <div className={cn("mt-2 flex items-center gap-1.5 text-[11px]", isLight ? "text-slate-400" : "text-white/35")}>
           <AudioLines className="h-3.5 w-3.5" />
           Auto voice capture keeps the transcript moving; typing remains available for corrections or edge cases.
         </div>
