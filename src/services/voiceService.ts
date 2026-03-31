@@ -117,7 +117,7 @@ export async function generateSpeech(
   if (!res.ok) {
     const err = await res.text();
     console.error(`[Voice] TTS failed: ${res.status}`, err);
-    throw new Error(`ElevenLabs TTS failed: ${res.status}`);
+    throw new Error(`ElevenLabs TTS failed: ${res.status}${err ? ` — ${err.slice(0, 220)}` : ""}`);
   }
 
   const buf = await res.arrayBuffer();
@@ -158,7 +158,10 @@ export async function generateSpeechStream(
     }),
   });
 
-  if (!res.ok) throw new Error(`ElevenLabs stream failed: ${res.status}`);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`ElevenLabs stream failed: ${res.status}${err ? ` — ${err.slice(0, 220)}` : ""}`);
+  }
   return res.body!;
 }
 

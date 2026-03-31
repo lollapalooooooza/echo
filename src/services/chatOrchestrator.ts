@@ -261,9 +261,9 @@ export async function* orchestrateChat(
       const audioBuf = await generateSpeech(fullText, character.voice.elevenLabsVoiceId);
       const audioBase64 = Buffer.from(audioBuf).toString("base64");
       yield { type: "audio", data: { audioBase64, format: "mp3" } };
-    } catch (err) {
+    } catch (err: any) {
       console.error("[Chat] Voice synthesis failed:", err);
-      yield { type: "audio_error", data: { error: "Voice synthesis failed" } };
+      yield { type: "audio_error", data: { error: err?.message || "Voice synthesis failed" } };
     }
   }
 
