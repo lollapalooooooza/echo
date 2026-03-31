@@ -3,10 +3,13 @@ import { createHash } from "crypto";
 import { db } from "@/lib/db";
 import { getRunwayClient } from "@/services/runwayClient";
 
+const MAX_RUNWAY_AVATAR_DOCUMENTS = 50;
 const MAX_RUNWAY_DOCUMENT_CONTENT_CHARS = 9_000;
 const MAX_RUNWAY_HEADINGS = 10;
 const MAX_RUNWAY_HIGHLIGHTS = 28;
 const MAX_RUNWAY_HIGHLIGHT_CHARS = 5_800;
+const MAX_RUNWAY_BUNDLE_SOURCE_CHARS = 1_050;
+const MAX_RUNWAY_BUNDLE_CONTENT_CHARS = 8_600;
 
 type KnowledgeSourceForRunway = {
   id: string;
@@ -21,6 +24,7 @@ type KnowledgeSourceForRunway = {
   cleanedText: string | null;
   rawContent: string | null;
   status: string;
+  updatedAt: Date;
   runwayDocumentId: string | null;
   runwayDocumentHash: string | null;
 };
@@ -154,6 +158,64 @@ function buildRunwayDocumentContent(source: KnowledgeSourceForRunway) {
 
 }
 
+function buildRunwayBundleSourceContent(source: KnowledgeSourceForRunway) {
+  const headingTexts = getHeadingTexts(source.headings).slice(0, 4);
+  const highlights = buildRunwayHighlights(source, headingTexts).slice(0, 6);
+  const sections = [`## ${buildRunwayDocumentName(source)}`];
+
+  if (source.sourceUrl) sections.push(`URL: ${source.sourceUrl}`);
+  if (source.topic) sections.push(`Topic: ${cleanKnowledgeLine(source.topic, 100)}`);
+  if (source.summary) sections.push(`Summary: ${cleanKnowledgeLine(source.summary, 220)}`);
+  if (headingTexts.length > 0) {
+    sections.push(`Sections: ${headingTexts.join(" | ")}`);
+  }
+  if (highlights.length > 0) {
+    sections.push(highlights.map((highlight) => `- ${cleanKnowledgeLine(highlight, 180)}`).join("\n"));
+  }
+
+  const content = sections.join("\n");
+  if (content.length <= MAX_RUNWAY_BUNDLE_SOURCE_CHARS) return content;
+  return `${content.slice(0, MAX_RUNWAY_BUNDLE_SOURCE_CHARS - 1).trimEnd()}…`;
+}
+
+function buildRunwayBundleName(bundleIndex: number, totalBundles: number) {
+  return totalBundles <= 1 ? "Knowledge bundle" : `Knowledge bundle ${bundleIndex + 1}`;
+}
+
+function buildRunwayBundleContents(sources: KnowledgeSourceForRunway[]) {
+  const bundles: string[] = [];
+  let current = "# Character knowledge bundle";
+
+  for (const source of sources) {
+    const sourceBlock = buildRunwayBundleSourceContent(source);
+    const next = `${current}\n\n${sourceBlock}`;
+
+    if (current !== "# Character knowledge bundle" && next.length > MAX_RUNWAY_BUNDLE_CONTENT_CHARS) {
+      bundles.push(current);
+      current = `# Character knowledge bundle\n\n${sourceBlock}`;
+      continue;
+    }
+
+    current = next;
+  }
+
+  if (current.trim()) {
+    bundles.push(current);
+  }
+
+  return bundles;
+}
+
+async function createVerifiedRunwayDocument(name: string, content: string) {
+  const client = getRunwayClient();
+  const document = await client.documents.create({ name, content });
+  const verifiedDocument = await client.documents.retrieve(document.id);
+  if (!verifiedDocument.content?.trim()) {
+    throw new Error(`Runway document ${document.id} was created without readable content`);
+  }
+  return document.id;
+}
+
 function buildRunwayDocumentHash(source: KnowledgeSourceForRunway) {
   const content = buildRunwayDocumentContent(source);
   return createHash("sha256")
@@ -175,7 +237,6 @@ async function ensureRunwayDocumentForSource(source: KnowledgeSourceForRunway) {
     throw new Error(`Knowledge source "${source.title}" does not contain text that Runway can attach`);
   }
 
-  const client = getRunwayClient();
   const nextHash = buildRunwayDocumentHash(source);
 
   if (source.runwayDocumentId && source.runwayDocumentHash === nextHash) {
@@ -184,31 +245,24 @@ async function ensureRunwayDocumentForSource(source: KnowledgeSourceForRunway) {
 
   if (source.runwayDocumentId) {
     try {
-      await client.documents.delete(source.runwayDocumentId);
+      await getRunwayClient().documents.delete(source.runwayDocumentId);
     } catch (error) {
       console.warn(`[RunwayKnowledge] Failed to delete stale document ${source.runwayDocumentId}:`, error);
     }
   }
 
-  const document = await client.documents.create({
-    name: buildRunwayDocumentName(source),
-    content,
-  });
-  const verifiedDocument = await client.documents.retrieve(document.id);
-  if (!verifiedDocument.content?.trim()) {
-    throw new Error(`Runway document ${document.id} was created without readable content`);
-  }
+  const documentId = await createVerifiedRunwayDocument(buildRunwayDocumentName(source), content);
 
   await db.knowledgeSource.update({
     where: { id: source.id },
     data: {
-      runwayDocumentId: document.id,
+      runwayDocumentId: documentId,
       runwayDocumentHash: nextHash,
       runwayDocumentSyncedAt: new Date(),
     },
   });
 
-  return document.id;
+  return documentId;
 }
 
 export async function resolveKnowledgeSourcesForRunway(userId: string, sourceIds?: string[]) {
@@ -233,6 +287,7 @@ export async function resolveKnowledgeSourcesForRunway(userId: string, sourceIds
       cleanedText: true,
       rawContent: true,
       status: true,
+      updatedAt: true,
       runwayDocumentId: true,
       runwayDocumentHash: true,
     },
@@ -259,14 +314,66 @@ export async function getRunwayDocumentIdsForKnowledgeSources(userId: string, so
 
 export async function syncRunwayKnowledgeToAvatar(avatarId: string, userId: string, sourceIds?: string[]) {
   const client = getRunwayClient();
-  const documentIds = await getRunwayDocumentIdsForKnowledgeSources(userId, sourceIds);
+  const sources = await resolveKnowledgeSourcesForRunway(userId, sourceIds);
+  if (sources.length === 0) {
+    await client.avatars.update(avatarId, { documentIds: [] });
+    await verifyAvatarDocumentAttachment(avatarId, []);
+    return [] as string[];
+  }
+
+  const sourceDocumentIds = await getRunwayDocumentIdsForKnowledgeSources(userId, sourceIds);
+  let documentIds = sourceDocumentIds;
+  let ephemeralBundleDocumentIds: string[] = [];
+
+  if (sourceDocumentIds.length > MAX_RUNWAY_AVATAR_DOCUMENTS) {
+    const bundleSources = [...sources].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+    const bundleContents = buildRunwayBundleContents(bundleSources);
+
+    if (bundleContents.length > MAX_RUNWAY_AVATAR_DOCUMENTS) {
+      throw new Error(
+        `Runway can attach at most ${MAX_RUNWAY_AVATAR_DOCUMENTS} knowledge documents per avatar, and this character still expands to ${bundleContents.length} bundles`
+      );
+    }
+
+    ephemeralBundleDocumentIds = [];
+    for (let index = 0; index < bundleContents.length; index += 1) {
+      const bundleName = buildRunwayBundleName(index, bundleContents.length);
+      const bundleId = await createVerifiedRunwayDocument(bundleName, bundleContents[index]);
+      ephemeralBundleDocumentIds.push(bundleId);
+    }
+
+    documentIds = ephemeralBundleDocumentIds;
+    console.warn(
+      `[RunwayKnowledge] Collapsed ${sourceDocumentIds.length} source documents into ${documentIds.length} bundle documents for avatar ${avatarId}`
+    );
+  }
+
+  const avatarBeforeUpdate = await client.avatars.retrieve(avatarId);
+  const previousDocumentIds = Array.isArray((avatarBeforeUpdate as any).documentIds)
+    ? ((avatarBeforeUpdate as any).documentIds as string[])
+    : [];
 
   await client.avatars.update(avatarId, {
     documentIds,
   });
   await verifyAvatarDocumentAttachment(avatarId, documentIds);
+  await cleanupStaleBundleDocuments(previousDocumentIds, documentIds, sourceDocumentIds);
 
   return documentIds;
+}
+
+async function cleanupStaleBundleDocuments(previousDocumentIds: string[], nextDocumentIds: string[], sourceDocumentIds: string[]) {
+  const client = getRunwayClient();
+  const keep = new Set([...nextDocumentIds, ...sourceDocumentIds]);
+  const staleBundleDocumentIds = previousDocumentIds.filter((documentId) => !keep.has(documentId));
+
+  for (const documentId of staleBundleDocumentIds) {
+    try {
+      await client.documents.delete(documentId);
+    } catch (error) {
+      console.warn(`[RunwayKnowledge] Failed to delete stale bundle document ${documentId}:`, error);
+    }
+  }
 }
 
 async function verifyAvatarDocumentAttachment(avatarId: string, documentIds: string[]) {
