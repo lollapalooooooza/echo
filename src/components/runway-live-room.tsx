@@ -261,7 +261,7 @@ export function RunwayLiveRoom({
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-6 lg:h-[calc(100vh-6.5rem)] lg:flex-row lg:pb-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-6 lg:h-[calc(100vh-6.5rem)] lg:flex-row lg:overflow-hidden lg:pb-8">
         <div className="min-w-0 flex-1 lg:min-h-0">
           {connection.status === "ready" ? (
             <AvatarSession
@@ -317,7 +317,7 @@ export function RunwayLiveRoom({
           )}
         </div>
 
-        <div className="w-full lg:flex lg:min-h-0 lg:w-[23rem] lg:max-w-sm">
+        <div className="w-full lg:flex lg:min-h-0 lg:w-[23rem] lg:max-w-sm lg:flex-shrink-0">
           <LiveConversationSidebar character={character} />
         </div>
       </div>

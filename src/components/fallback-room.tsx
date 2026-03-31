@@ -73,11 +73,17 @@ export function FallbackRoom({
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null);
   const [roomTheme, setRoomTheme] = useState<RoomTheme>("light");
   const [audioIssue, setAudioIssue] = useState("");
+  const [voiceEnergy, setVoiceEnergy] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const energyRef = useRef(0);
   const recRef = useRef<any>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -107,26 +113,118 @@ export function FallbackRoom({
     }
   }, [roomTheme]);
 
+  const stopVoiceVisualization = useCallback(() => {
+    if (animationFrameRef.current) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    energyRef.current = 0;
+    setVoiceEnergy(0);
+  }, []);
+
+  const ensureVoiceVisualizer = useCallback(async () => {
+    if (typeof window === "undefined" || !audioRef.current) return null;
+
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return null;
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextCtor();
+    }
+
+    if (!analyserRef.current) {
+      const analyser = audioContextRef.current.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.84;
+      analyserRef.current = analyser;
+    }
+
+    if (!sourceNodeRef.current) {
+      const source = audioContextRef.current.createMediaElementSource(audioRef.current);
+      source.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
+      sourceNodeRef.current = source;
+    }
+
+    if (audioContextRef.current.state === "suspended") {
+      await audioContextRef.current.resume();
+    }
+
+    return analyserRef.current;
+  }, []);
+
+  const startVoiceVisualization = useCallback(async () => {
+    const analyser = await ensureVoiceVisualizer();
+    if (!analyser) {
+      setVoiceEnergy(0.18);
+      return;
+    }
+
+    if (animationFrameRef.current) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    const waveform = new Uint8Array(analyser.fftSize);
+
+    const sample = () => {
+      analyser.getByteTimeDomainData(waveform);
+
+      let total = 0;
+      for (let index = 0; index < waveform.length; index += 1) {
+        const normalized = (waveform[index] - 128) / 128;
+        total += normalized * normalized;
+      }
+
+      const rms = Math.sqrt(total / waveform.length);
+      const nextEnergy = Math.min(1, rms * 4.6);
+      energyRef.current = energyRef.current * 0.76 + nextEnergy * 0.24;
+      setVoiceEnergy(energyRef.current);
+      animationFrameRef.current = window.requestAnimationFrame(sample);
+    };
+
+    sample();
+  }, [ensureVoiceVisualizer]);
+
   useEffect(() => {
     audioRef.current = new Audio();
-    const handleAudioEnd = () => setSpeaking(false);
+    const handleAudioPlay = () => {
+      setSpeaking(true);
+      void startVoiceVisualization();
+    };
+    const handleAudioPause = () => {
+      setSpeaking(false);
+      stopVoiceVisualization();
+    };
+    const handleAudioEnd = () => {
+      setSpeaking(false);
+      stopVoiceVisualization();
+    };
     const handleAudioError = () => {
       setSpeaking(false);
+      stopVoiceVisualization();
       setAudioIssue("Audio playback was blocked or failed in the browser.");
     };
 
+    audioRef.current.addEventListener("playing", handleAudioPlay);
+    audioRef.current.addEventListener("pause", handleAudioPause);
     audioRef.current.addEventListener("ended", handleAudioEnd);
     audioRef.current.addEventListener("error", handleAudioError);
 
     return () => {
       audioRef.current?.pause();
+      audioRef.current?.removeEventListener("playing", handleAudioPlay);
+      audioRef.current?.removeEventListener("pause", handleAudioPause);
       audioRef.current?.removeEventListener("ended", handleAudioEnd);
       audioRef.current?.removeEventListener("error", handleAudioError);
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current);
       }
+      if (animationFrameRef.current) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+      }
+      void audioContextRef.current?.close().catch(() => undefined);
     };
-  }, []);
+  }, [startVoiceVisualization, stopVoiceVisualization]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -155,23 +253,24 @@ export function FallbackRoom({
 
       try {
         await audioRef.current.play();
-        setSpeaking(true);
       } catch {
         setSpeaking(false);
+        stopVoiceVisualization();
         setAudioIssue("Voice was generated, but the browser blocked autoplay. Tap the speaker and try again.");
       }
     },
-    [speakerOff]
+    [speakerOff, stopVoiceVisualization]
   );
 
   const interrupt = useCallback(() => {
     audioRef.current?.pause();
     setSpeaking(false);
+    stopVoiceVisualization();
     abortRef.current?.abort();
     abortRef.current = null;
     setLoading(false);
     setMessages((current) => current.map((message) => (message.streaming ? { ...message, streaming: false } : message)));
-  }, []);
+  }, [stopVoiceVisualization]);
 
   const toggleListen = useCallback(() => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
@@ -365,7 +464,11 @@ export function FallbackRoom({
   const lyricLines = buildLyricLines(subtitle);
   const lyricQueue = lyricLines.length > 0 ? lyricLines : [loading ? "Thinking..." : character.greeting];
   const activeLyricIndex = lyricQueue.length - 1;
-  const pulseOffset = speaking ? Math.min(32, Math.max(10, subtitle.length / 5)) : 8;
+  const auraEnergy = speaking ? Math.max(voiceEnergy, 0.12) : loading ? 0.14 : 0.05;
+  const coreInset = 18 + auraEnergy * 28;
+  const midInset = 44 + auraEnergy * 56;
+  const outerInset = 76 + auraEnergy * 88;
+  const avatarScale = 1 + auraEnergy * 0.045;
 
   return (
     <div
@@ -435,8 +538,14 @@ export function FallbackRoom({
         </div>
       </header>
 
-      <div className={cn("relative z-10 grid min-h-[calc(100vh-5.5rem)]", showTranscript ? "lg:grid-cols-[minmax(0,1fr)_26rem]" : "lg:grid-cols-1")}>
-        <div className="flex min-w-0 flex-col items-center justify-between px-4 pb-6 pt-2 sm:px-6 lg:px-10">
+      <div
+        className={cn(
+          "relative z-10 grid min-h-[calc(100vh-5.5rem)]",
+          showTranscript ? "lg:grid-cols-[minmax(0,1fr)_26rem]" : "lg:grid-cols-1",
+          "lg:h-[calc(100vh-5.5rem)] lg:overflow-hidden"
+        )}
+      >
+        <div className="flex min-w-0 flex-col items-center justify-between px-4 pb-6 pt-2 sm:px-6 lg:min-h-0 lg:px-10">
           <div className="flex w-full max-w-4xl flex-1 flex-col items-center justify-center">
             <div
               className={cn(
@@ -452,36 +561,67 @@ export function FallbackRoom({
                 <>
                   <div
                     className={cn(
-                      "absolute rounded-full border animate-pulse-ring",
-                      isLight ? "border-amber-300/60" : "border-white/15"
+                      "absolute rounded-full blur-3xl transition-all duration-150",
+                      isLight
+                        ? "bg-[radial-gradient(circle,_rgba(251,191,36,0.26),_rgba(251,191,36,0.1)_52%,_transparent_76%)]"
+                        : "bg-[radial-gradient(circle,_rgba(52,211,153,0.22),_rgba(34,211,238,0.1)_54%,_transparent_78%)]"
                     )}
-                    style={{ inset: `-${pulseOffset}px` }}
+                    style={{
+                      inset: `-${midInset}px`,
+                      opacity: speaking ? 0.54 + auraEnergy * 0.34 : 0.26,
+                      transform: `scale(${1 + auraEnergy * 0.12})`,
+                    }}
                   />
                   <div
                     className={cn(
-                      "absolute rounded-full border animate-pulse-ring",
-                      isLight ? "border-amber-200/55" : "border-white/10"
+                      "absolute rounded-full border transition-all duration-150 animate-pulse-ring",
+                      isLight ? "border-amber-300/55" : "border-emerald-200/30"
                     )}
-                    style={{ inset: `-${pulseOffset + 18}px`, animationDelay: "0.45s" }}
+                    style={{
+                      inset: `-${coreInset}px`,
+                      animationDelay: "0.1s",
+                      opacity: 0.32 + auraEnergy * 0.5,
+                      boxShadow: isLight
+                        ? `0 0 ${18 + auraEnergy * 40}px rgba(251, 191, 36, ${0.16 + auraEnergy * 0.2})`
+                        : `0 0 ${22 + auraEnergy * 46}px rgba(16, 185, 129, ${0.14 + auraEnergy * 0.24})`,
+                    }}
                   />
                   <div
                     className={cn(
-                      "absolute rounded-full border animate-pulse-ring",
-                      isLight ? "border-orange-200/45" : "border-white/5"
+                      "absolute rounded-full border transition-all duration-150 animate-pulse-ring",
+                      isLight ? "border-orange-200/45" : "border-cyan-200/18"
                     )}
-                    style={{ inset: `-${pulseOffset + 34}px`, animationDelay: "0.9s" }}
+                    style={{
+                      inset: `-${outerInset}px`,
+                      animationDelay: "0.52s",
+                      opacity: 0.18 + auraEnergy * 0.34,
+                    }}
                   />
                 </>
               )}
 
               <div
                 className={cn(
-                  "relative h-56 w-56 overflow-hidden rounded-full border shadow-2xl transition-all duration-500 sm:h-64 sm:w-64",
+                  "relative h-56 w-56 overflow-hidden rounded-full border shadow-2xl transition-all duration-150 sm:h-64 sm:w-64",
                   isLight
                     ? "border-white/80 bg-white/70 shadow-amber-100"
                     : "border-white/10 bg-white/5 shadow-black/30"
                 )}
+                style={{
+                  transform: `scale(${avatarScale})`,
+                  boxShadow: isLight
+                    ? `0 28px 70px rgba(251, 191, 36, ${0.12 + auraEnergy * 0.14})`
+                    : `0 28px 70px rgba(0, 0, 0, 0.42), 0 0 ${22 + auraEnergy * 36}px rgba(16, 185, 129, ${0.06 + auraEnergy * 0.1})`,
+                }}
               >
+                <div
+                  className={cn(
+                    "pointer-events-none absolute inset-0 z-10",
+                    isLight
+                      ? "bg-[radial-gradient(circle_at_50%_18%,_rgba(255,255,255,0.42),_transparent_48%)]"
+                      : "bg-[radial-gradient(circle_at_50%_18%,_rgba(255,255,255,0.12),_transparent_48%)]"
+                  )}
+                />
                 {videoMode && hasVideo && currentVideo ? (
                   <video
                     key={currentVideo}
@@ -715,7 +855,7 @@ export function FallbackRoom({
         {showTranscript && (
           <aside
             className={cn(
-              "mx-4 mb-6 flex min-h-[28rem] flex-col overflow-hidden rounded-[30px] border shadow-xl backdrop-blur-2xl lg:mx-6 lg:my-4 lg:min-h-0",
+              "mx-4 mb-6 flex h-[min(42rem,calc(100vh-9rem))] max-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-[30px] border shadow-xl backdrop-blur-2xl lg:mx-6 lg:my-4 lg:h-full lg:max-h-full lg:min-h-0",
               isLight
                 ? "border-white/75 bg-white/52 shadow-slate-200/70"
                 : "border-white/10 bg-black/28 shadow-black/30"
@@ -734,7 +874,7 @@ export function FallbackRoom({
               </div>
             </div>
 
-            <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+            <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 scroll-smooth sm:px-5">
               <div className={cn("rounded-2xl px-4 py-3", isLight ? "bg-white/75 text-slate-700" : "bg-white/5 text-white/70")}>
                 <p className={cn("mb-1 text-[11px]", isLight ? "text-slate-400" : "text-white/35")}>{character.name}</p>
                 <p className="text-sm leading-6">{character.greeting}</p>

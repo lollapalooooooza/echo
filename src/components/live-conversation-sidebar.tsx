@@ -439,7 +439,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
           : "Reconnecting to your mic";
 
   return (
-    <aside className="flex h-full min-h-[32rem] max-h-[calc(100vh-12rem)] min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-black/30 backdrop-blur-sm lg:min-h-0 lg:max-h-full">
+    <aside className="flex h-[min(42rem,calc(100vh-10rem))] max-h-[calc(100vh-10rem)] min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-black/30 backdrop-blur-sm lg:h-full lg:max-h-full lg:min-h-0">
       <div className="border-b border-white/10 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -482,7 +482,7 @@ export function LiveConversationSidebar({ character }: { character: any }) {
         {captureError && <p className="mt-2 text-[12px] text-amber-200/85">{captureError}</p>}
       </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-4 scroll-smooth">
         <div className="flex gap-2.5">
           {character.avatarUrl ? (
             <img src={character.avatarUrl} alt="" className="mt-0.5 h-7 w-7 flex-shrink-0 rounded-full bg-white/10 object-cover" />
