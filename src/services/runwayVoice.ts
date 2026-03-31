@@ -190,6 +190,10 @@ export function inferRunwayLiveVoicePreset(input: {
   const bio = normalize(input.bio);
   const genderHint = inferGenderHint(normalizedVoiceName);
 
+  if (normalizedVoiceId && isRunwayLiveVoicePreset(normalizedVoiceId)) {
+    return normalizedVoiceId;
+  }
+
   if (normalizedVoiceId && ELEVENLABS_TO_RUNWAY_PRESET[normalizedVoiceId]) {
     return ELEVENLABS_TO_RUNWAY_PRESET[normalizedVoiceId];
   }

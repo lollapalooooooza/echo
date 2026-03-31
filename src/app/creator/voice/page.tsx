@@ -13,6 +13,7 @@ import {
   Wand2,
 } from "lucide-react";
 
+import { playVoicePreview, stopVoicePreview } from "@/lib/voice-preview";
 import { cn } from "@/lib/utils";
 
 type VoiceLibraryResponse = {
@@ -26,25 +27,6 @@ type VoiceLibraryResponse = {
     characters?: { id: string; name: string }[];
   }>;
 };
-
-async function playPreview(voiceId: string, text: string) {
-  const res = await fetch("/api/voice/synthesize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ voiceId, text, stream: false }),
-  });
-
-  if (!res.ok) {
-    throw new Error("Preview failed");
-  }
-
-  const buffer = await res.arrayBuffer();
-  const url = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
-  const audio = new Audio(url);
-
-  audio.addEventListener("ended", () => URL.revokeObjectURL(url));
-  await audio.play();
-}
 
 export default function VoiceLibraryPage() {
   const [voices, setVoices] = useState<VoiceLibraryResponse>({ presets: [], custom: [] });
@@ -77,6 +59,8 @@ export default function VoiceLibraryPage() {
   useEffect(() => {
     void loadVoices();
   }, []);
+
+  useEffect(() => () => stopVoicePreview(), []);
 
   const totalAssignments = voices.custom.reduce(
     (sum, voice) => sum + (voice._count?.characters || 0),
@@ -349,15 +333,18 @@ export default function VoiceLibraryPage() {
                       type="button"
                       onClick={async () => {
                         try {
-                          setPreviewingId(voice.id);
-                          await playPreview(voice.elevenLabsVoiceId, previewText);
+                          await playVoicePreview({
+                            previewKey: voice.id,
+                            voiceId: voice.elevenLabsVoiceId,
+                            text: previewText,
+                            onStart: setPreviewingId,
+                            onStop: (previewKey) =>
+                              setPreviewingId((current) => (current === previewKey ? "" : current)),
+                          });
                         } catch (err) {
                           console.error("[VoiceLibraryPage] Preview failed:", err);
-                        } finally {
-                          setPreviewingId("");
                         }
                       }}
-                      disabled={previewingId === voice.id}
                       className="inline-flex h-10 items-center gap-2 rounded-full border border-border px-4 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground disabled:opacity-60"
                     >
                       {previewingId === voice.id ? (
@@ -397,52 +384,57 @@ export default function VoiceLibraryPage() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">Preset voices</h2>
+          <h2 className="text-lg font-semibold">Runway default voices</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Useful defaults when you want a polished voice without cloning your own.
+            Runway-provided default options, kept in a scrollable block so this page stays compact.
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {voices.presets.map((voice) => (
-            <article
-              key={voice.id}
-              className="rounded-[24px] border border-border/70 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.04)]"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                  <AudioLines className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-[14px] font-semibold">{voice.name}</h3>
-                  <p className="mt-1 text-[12px] text-muted-foreground">{voice.desc || "Preset voice"}</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    setPreviewingId(voice.id);
-                    await playPreview(voice.id, previewText);
-                  } catch (err) {
-                    console.error("[VoiceLibraryPage] Preset preview failed:", err);
-                  } finally {
-                    setPreviewingId("");
-                  }
-                }}
-                disabled={previewingId === voice.id}
-                className="mt-4 inline-flex h-10 items-center gap-2 rounded-full border border-border px-4 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground disabled:opacity-60"
+        <div className="max-h-[28rem] overflow-y-auto pr-1">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {voices.presets.map((voice) => (
+              <article
+                key={voice.id}
+                className="rounded-[24px] border border-border/70 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.04)]"
               >
-                {previewingId === voice.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Volume2 className="h-4 w-4" />
-                )}
-                {previewingId === voice.id ? "Previewing" : "Preview"}
-              </button>
-            </article>
-          ))}
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                    <AudioLines className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-[14px] font-semibold">{voice.name}</h3>
+                    <p className="mt-1 text-[12px] text-muted-foreground">{voice.desc || "Preset voice"}</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await playVoicePreview({
+                        previewKey: voice.id,
+                        voiceId: voice.id,
+                        text: previewText,
+                        onStart: setPreviewingId,
+                        onStop: (previewKey) =>
+                          setPreviewingId((current) => (current === previewKey ? "" : current)),
+                      });
+                    } catch (err) {
+                      console.error("[VoiceLibraryPage] Preset preview failed:", err);
+                    }
+                  }}
+                  className="mt-4 inline-flex h-10 items-center gap-2 rounded-full border border-border px-4 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground disabled:opacity-60"
+                >
+                  {previewingId === voice.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Volume2 className="h-4 w-4" />
+                  )}
+                  {previewingId === voice.id ? "Previewing" : "Preview"}
+                </button>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
     </div>

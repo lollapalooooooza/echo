@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import { env } from "@/lib/env";
+import { RUNWAY_LIVE_VOICE_PRESETS, type RunwayLiveVoicePreset } from "@/services/runwayVoice";
 
 const BASE = "https://api.elevenlabs.io/v1";
 
@@ -15,13 +16,41 @@ function headers() {
 
 // ── Voice Presets ────────────────────────────────────────────
 
-export const PRESET_VOICES = [
-  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", desc: "Warm, conversational" },
-  { id: "29vD33N1CtxCmqQRPOHJ", name: "Drew", desc: "Deep, authoritative" },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", desc: "Calm, professional" },
-  { id: "IKne3meq5aSn9XLyUdCD", name: "Charlie", desc: "Energetic, friendly" },
-  { id: "XB0fDUnXU5powFXDhCwa", name: "Charlotte", desc: "Soft, thoughtful" },
-] as const;
+const RUNWAY_TO_ELEVENLABS_PRESET: Record<RunwayLiveVoicePreset, string> = {
+  adrian: "29vD33N1CtxCmqQRPOHJ",
+  clara: "21m00Tcm4TlvDq8ikWAM",
+  drew: "29vD33N1CtxCmqQRPOHJ",
+  emma: "IKne3meq5aSn9XLyUdCD",
+  maya: "EXAVITQu4vr4xnSDxMaL",
+  nathan: "29vD33N1CtxCmqQRPOHJ",
+  luna: "XB0fDUnXU5powFXDhCwa",
+  roman: "29vD33N1CtxCmqQRPOHJ",
+  petra: "EXAVITQu4vr4xnSDxMaL",
+  violet: "XB0fDUnXU5powFXDhCwa",
+};
+
+const RUNWAY_PRESET_DESCRIPTIONS: Record<RunwayLiveVoicePreset, string> = {
+  adrian: "Runway live preset - grounded and professional",
+  clara: "Runway live preset - warm and conversational",
+  drew: "Runway live preset - deep and authoritative",
+  emma: "Runway live preset - bright and energetic",
+  maya: "Runway live preset - calm and thoughtful",
+  nathan: "Runway live preset - casual and friendly",
+  luna: "Runway live preset - soft and creative",
+  roman: "Runway live preset - bold and witty",
+  petra: "Runway live preset - precise and academic",
+  violet: "Runway live preset - playful and lively",
+};
+
+export const PRESET_VOICES = RUNWAY_LIVE_VOICE_PRESETS.map((voice) => ({
+  id: voice.id,
+  name: voice.name,
+  desc: RUNWAY_PRESET_DESCRIPTIONS[voice.id],
+}));
+
+function resolveSynthVoiceId(voiceId: string) {
+  return RUNWAY_TO_ELEVENLABS_PRESET[voiceId as RunwayLiveVoicePreset] || voiceId;
+}
 
 export interface VoiceSettings {
   stability: number;
@@ -97,9 +126,10 @@ export async function generateSpeech(
   }
 
   const voiceSettings = { ...DEFAULT_VOICE_SETTINGS, ...settings };
-  console.log(`[Voice] Synthesizing ${text.length} chars with voice ${voiceId}`);
+  const synthVoiceId = resolveSynthVoiceId(voiceId);
+  console.log(`[Voice] Synthesizing ${text.length} chars with voice ${voiceId}${synthVoiceId !== voiceId ? ` -> ${synthVoiceId}` : ""}`);
 
-  const res = await fetch(`${BASE}/text-to-speech/${voiceId}`, {
+  const res = await fetch(`${BASE}/text-to-speech/${synthVoiceId}`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
@@ -140,8 +170,9 @@ export async function generateSpeechStream(
   if (!env.ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not set");
 
   const voiceSettings = { ...DEFAULT_VOICE_SETTINGS, ...settings };
+  const synthVoiceId = resolveSynthVoiceId(voiceId);
 
-  const res = await fetch(`${BASE}/text-to-speech/${voiceId}/stream`, {
+  const res = await fetch(`${BASE}/text-to-speech/${synthVoiceId}/stream`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
