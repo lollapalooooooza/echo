@@ -3,7 +3,7 @@
 <div align="center">
   <img src="./public/brand/echonest-mascot.png" alt="EchoNest mascot" width="180" />
 
-  <h3>Turn writing into a living AI character with voice, video, memory, and vibes.</h3>
+  <h3>Turn knowledge into a living AI character with voice, video, memory, and vibes.</h3>
 
   <p>
     <strong>EchoNest</strong> lets creators upload articles, crawl websites, build a knowledge library,
