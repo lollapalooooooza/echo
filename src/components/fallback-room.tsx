@@ -592,9 +592,9 @@ export function FallbackRoom({
   const lyricQueue = lyricLines.length > 0 ? lyricLines : [loading ? "Thinking..." : character.greeting];
   const activeLyricIndex = lyricQueue.length - 1;
   const auraEnergy = speaking ? Math.max(voiceEnergy, 0.12) : loading ? 0.14 : 0.05;
-  const coreInset = 18 + auraEnergy * 28;
-  const midInset = 44 + auraEnergy * 56;
-  const outerInset = 76 + auraEnergy * 88;
+  const auraDuration = `${Math.max(2.75, 3.45 - auraEnergy * 0.5).toFixed(2)}s`;
+  const haloInset = 22 + auraEnergy * 26;
+  const ringInset = 12 + auraEnergy * 18;
   const avatarScale = 1 + auraEnergy * 0.045;
 
   return (
@@ -688,40 +688,46 @@ export function FallbackRoom({
                 <>
                   <div
                     className={cn(
-                      "absolute rounded-full blur-3xl transition-all duration-150",
+                      "absolute rounded-full blur-[44px] transition-all duration-300",
                       isLight
-                        ? "bg-[radial-gradient(circle,_rgba(251,191,36,0.26),_rgba(251,191,36,0.1)_52%,_transparent_76%)]"
-                        : "bg-[radial-gradient(circle,_rgba(52,211,153,0.22),_rgba(34,211,238,0.1)_54%,_transparent_78%)]"
+                        ? "bg-[radial-gradient(circle,_rgba(251,191,36,0.2),_rgba(251,191,36,0.08)_48%,_transparent_74%)]"
+                        : "bg-[radial-gradient(circle,_rgba(52,211,153,0.18),_rgba(34,211,238,0.08)_52%,_transparent_76%)]"
                     )}
                     style={{
-                      inset: `-${midInset}px`,
-                      opacity: speaking ? 0.54 + auraEnergy * 0.34 : 0.26,
-                      transform: `scale(${1 + auraEnergy * 0.12})`,
+                      inset: `-${haloInset}px`,
+                      opacity: speaking ? 0.34 + auraEnergy * 0.24 : 0.14,
+                      transform: `scale(${1 + auraEnergy * 0.08})`,
                     }}
                   />
                   <div
                     className={cn(
-                      "absolute rounded-full border transition-all duration-150 animate-pulse-ring",
+                      "absolute rounded-full border transition-all duration-300 animate-voice-aura",
                       isLight ? "border-amber-300/55" : "border-emerald-200/30"
                     )}
                     style={{
-                      inset: `-${coreInset}px`,
-                      animationDelay: "0.1s",
-                      opacity: 0.32 + auraEnergy * 0.5,
+                      inset: `-${ringInset}px`,
+                      animationDelay: "0s",
+                      ["--aura-duration" as any]: auraDuration,
+                      ["--aura-scale" as any]: `${1.42 + auraEnergy * 0.12}`,
+                      ["--aura-thickness" as any]: `${10 + auraEnergy * 7}px`,
+                      ["--aura-start-opacity" as any]: `${0.18 + auraEnergy * 0.16}`,
                       boxShadow: isLight
-                        ? `0 0 ${18 + auraEnergy * 40}px rgba(251, 191, 36, ${0.16 + auraEnergy * 0.2})`
-                        : `0 0 ${22 + auraEnergy * 46}px rgba(16, 185, 129, ${0.14 + auraEnergy * 0.24})`,
+                        ? `0 0 ${12 + auraEnergy * 22}px rgba(251, 191, 36, ${0.12 + auraEnergy * 0.08})`
+                        : `0 0 ${14 + auraEnergy * 26}px rgba(16, 185, 129, ${0.1 + auraEnergy * 0.1})`,
                     }}
                   />
                   <div
                     className={cn(
-                      "absolute rounded-full border transition-all duration-150 animate-pulse-ring",
+                      "absolute rounded-full border transition-all duration-300 animate-voice-aura",
                       isLight ? "border-orange-200/45" : "border-cyan-200/18"
                     )}
                     style={{
-                      inset: `-${outerInset}px`,
-                      animationDelay: "0.52s",
-                      opacity: 0.18 + auraEnergy * 0.34,
+                      inset: `-${ringInset + 8}px`,
+                      animationDelay: "1.05s",
+                      ["--aura-duration" as any]: `${Math.max(2.95, 3.7 - auraEnergy * 0.45).toFixed(2)}s`,
+                      ["--aura-scale" as any]: `${1.62 + auraEnergy * 0.14}`,
+                      ["--aura-thickness" as any]: `${8 + auraEnergy * 5}px`,
+                      ["--aura-start-opacity" as any]: `${0.12 + auraEnergy * 0.1}`,
                     }}
                   />
                 </>
