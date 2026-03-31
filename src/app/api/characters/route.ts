@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       personalityTone: true, status: true, suggestedQuestions: true,
       greeting: true, runwayCharacterId: true, idleVideoUrl: true,
       speakingVideoUrl: true,
+      voice: { select: { elevenLabsVoiceId: true } },
       user: { select: { name: true, image: true } },
       _count: { select: { conversations: true } },
     },

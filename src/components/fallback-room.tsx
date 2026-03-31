@@ -89,6 +89,9 @@ export function FallbackRoom({
   const revealInterruptedRef = useRef(false);
   const recRef = useRef<any>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const greetingAbortRef = useRef<AbortController | null>(null);
+  const introMessageIdRef = useRef<string | null>(null);
+  const greetingSeededForCharacterRef = useRef<string | null>(null);
 
   useEffect(() => {
     setVideoUrls({
@@ -140,6 +143,20 @@ export function FallbackRoom({
     energyRef.current = 0;
     setVoiceEnergy(0);
   }, []);
+
+  useEffect(() => {
+    introMessageIdRef.current = null;
+    greetingSeededForCharacterRef.current = null;
+    greetingAbortRef.current?.abort();
+    greetingAbortRef.current = null;
+    revealInterruptedRef.current = false;
+    setMessages([]);
+    setSubtitle("");
+    setConvId(null);
+    setAudioIssue("");
+    audioRef.current?.pause();
+    stopVoiceVisualization();
+  }, [character.id, stopVoiceVisualization]);
 
   const revealTranscriptWithAudio = useCallback(
     (assistantId: string, text: string) => {
@@ -274,8 +291,8 @@ export function FallbackRoom({
       }
 
       const rms = Math.sqrt(total / waveform.length);
-      const nextEnergy = Math.min(1, rms * 4.6);
-      energyRef.current = energyRef.current * 0.76 + nextEnergy * 0.24;
+      const nextEnergy = Math.min(1, rms * 3.2);
+      energyRef.current = energyRef.current * 0.9 + nextEnergy * 0.1;
       setVoiceEnergy(energyRef.current);
       animationFrameRef.current = window.requestAnimationFrame(sample);
     };
@@ -331,22 +348,25 @@ export function FallbackRoom({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, showTranscript]);
 
-  const playAudio = useCallback(
-    async (b64: string, assistantId?: string, transcriptText?: string) => {
+  const playAudioBuffer = useCallback(
+    async (buffer: ArrayBuffer | Uint8Array, assistantId?: string, transcriptText?: string) => {
       if (speakerOff || !audioRef.current) return;
 
-      const bytes = atob(b64);
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i += 1) arr[i] = bytes.charCodeAt(i);
+      const audioBytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+
+      revealInterruptedRef.current = false;
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
 
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current);
       }
-      audioUrlRef.current = URL.createObjectURL(new Blob([arr], { type: "audio/mpeg" }));
+      const audioBuffer = new ArrayBuffer(audioBytes.byteLength);
+      new Uint8Array(audioBuffer).set(audioBytes);
+      audioUrlRef.current = URL.createObjectURL(new Blob([audioBuffer], { type: "audio/mpeg" }));
       audioRef.current.src = audioUrlRef.current;
       audioRef.current.load();
       setAudioIssue("");
-      revealInterruptedRef.current = false;
 
       try {
         await waitForAudioReady();
@@ -366,16 +386,97 @@ export function FallbackRoom({
     [revealTranscriptWithAudio, speakerOff, stopTranscriptReveal, stopVoiceVisualization, waitForAudioReady]
   );
 
+  const playAudio = useCallback(
+    async (b64: string, assistantId?: string, transcriptText?: string) => {
+      const bytes = atob(b64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i += 1) arr[i] = bytes.charCodeAt(i);
+      await playAudioBuffer(arr, assistantId, transcriptText);
+    },
+    [playAudioBuffer]
+  );
+
+  useEffect(() => {
+    if (!character.id || !character.greeting?.trim()) return;
+    if (greetingSeededForCharacterRef.current === character.id) return;
+
+    greetingSeededForCharacterRef.current = character.id;
+    const introMessageId = `intro_${character.id}`;
+    const greetingText = character.greeting.trim();
+    introMessageIdRef.current = introMessageId;
+    setMessages([{ id: introMessageId, role: "assistant", content: "", streaming: true }]);
+    setSubtitle("");
+
+    if (speakerOff || !character.voice?.elevenLabsVoiceId) {
+      setMessages([{ id: introMessageId, role: "assistant", content: greetingText, streaming: false }]);
+      setSubtitle(greetingText);
+      return;
+    }
+
+    const controller = new AbortController();
+    greetingAbortRef.current = controller;
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/voice/synthesize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            voiceId: character.voice.elevenLabsVoiceId,
+            text: greetingText,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Greeting voice failed: ${response.status}`);
+        }
+
+        const audioBuffer = await response.arrayBuffer();
+        if (controller.signal.aborted) return;
+        await playAudioBuffer(audioBuffer, introMessageId, greetingText);
+      } catch (error: any) {
+        if (error?.name === "AbortError" || controller.signal.aborted) return;
+        stopTranscriptReveal({ finalize: true, assistantId: introMessageId, text: greetingText });
+        setAudioIssue("Greeting voice could not start, but the room is ready to chat.");
+      } finally {
+        if (greetingAbortRef.current === controller) {
+          greetingAbortRef.current = null;
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      if (greetingAbortRef.current === controller) {
+        greetingAbortRef.current = null;
+      }
+    };
+  }, [
+    character.greeting,
+    character.id,
+    character.voice,
+    playAudioBuffer,
+    speakerOff,
+    stopTranscriptReveal,
+  ]);
+
   const interrupt = useCallback(() => {
     revealInterruptedRef.current = true;
     stopTranscriptReveal();
     audioRef.current?.pause();
     setSpeaking(false);
     stopVoiceVisualization();
+    greetingAbortRef.current?.abort();
+    greetingAbortRef.current = null;
     abortRef.current?.abort();
     abortRef.current = null;
     setLoading(false);
-    setMessages((current) => current.map((message) => (message.streaming ? { ...message, streaming: false } : message)));
+    setMessages((current) =>
+      current
+        .filter((message) => !(message.streaming && !message.content.trim()))
+        .map((message) => (message.streaming ? { ...message, streaming: false } : message))
+    );
   }, [stopTranscriptReveal, stopVoiceVisualization]);
 
   const toggleListen = useCallback(() => {
@@ -586,16 +687,19 @@ export function FallbackRoom({
 
   const hasVideo = !!(videoUrls.idle || videoUrls.speaking);
   const currentVideo = speaking ? videoUrls.speaking : videoUrls.idle;
-  const started = messages.length > 0;
+  const introMessageId = introMessageIdRef.current;
+  const started = messages.some((message) => message.id !== introMessageId);
   const isLight = roomTheme === "light";
   const lyricLines = buildLyricLines(subtitle);
   const lyricQueue = lyricLines.length > 0 ? lyricLines : [loading ? "Thinking..." : character.greeting];
   const activeLyricIndex = lyricQueue.length - 1;
-  const auraEnergy = speaking ? Math.max(voiceEnergy, 0.12) : loading ? 0.14 : 0.05;
-  const auraDuration = `${Math.max(2.75, 3.45 - auraEnergy * 0.5).toFixed(2)}s`;
-  const haloInset = 22 + auraEnergy * 26;
-  const ringInset = 12 + auraEnergy * 18;
-  const avatarScale = 1 + auraEnergy * 0.045;
+  const auraEnergy = speaking ? Math.max(voiceEnergy, 0.06) : loading ? 0.09 : 0.025;
+  const primaryAuraDuration = `${Math.max(4.25, 5.1 - auraEnergy * 0.55).toFixed(2)}s`;
+  const secondaryAuraDuration = `${Math.max(4.95, 6.15 - auraEnergy * 0.45).toFixed(2)}s`;
+  const haloInset = 28 + auraEnergy * 18;
+  const ringInset = 16 + auraEnergy * 10;
+  const avatarScale = 1 + auraEnergy * 0.018;
+  const auraRgb = isLight ? "246, 195, 86" : "240, 199, 108";
 
   return (
     <div
@@ -688,46 +792,42 @@ export function FallbackRoom({
                 <>
                   <div
                     className={cn(
-                      "absolute rounded-full blur-[44px] transition-all duration-300",
-                      isLight
-                        ? "bg-[radial-gradient(circle,_rgba(251,191,36,0.2),_rgba(251,191,36,0.08)_48%,_transparent_74%)]"
-                        : "bg-[radial-gradient(circle,_rgba(52,211,153,0.18),_rgba(34,211,238,0.08)_52%,_transparent_76%)]"
+                      "absolute rounded-full blur-[48px] transition-all duration-700"
                     )}
                     style={{
                       inset: `-${haloInset}px`,
-                      opacity: speaking ? 0.34 + auraEnergy * 0.24 : 0.14,
-                      transform: `scale(${1 + auraEnergy * 0.08})`,
+                      opacity: speaking ? 0.24 + auraEnergy * 0.16 : 0.1,
+                      transform: `scale(${1 + auraEnergy * 0.04})`,
+                      background: `radial-gradient(circle, rgba(${auraRgb}, ${0.16 + auraEnergy * 0.12}) 0%, rgba(${auraRgb}, ${0.07 + auraEnergy * 0.05}) 42%, rgba(${auraRgb}, 0) 76%)`,
                     }}
                   />
                   <div
                     className={cn(
-                      "absolute rounded-full border transition-all duration-300 animate-voice-aura",
-                      isLight ? "border-amber-300/55" : "border-emerald-200/30"
+                      "absolute rounded-full border transition-all duration-700 animate-voice-aura"
                     )}
                     style={{
                       inset: `-${ringInset}px`,
                       animationDelay: "0s",
-                      ["--aura-duration" as any]: auraDuration,
-                      ["--aura-scale" as any]: `${1.42 + auraEnergy * 0.12}`,
-                      ["--aura-thickness" as any]: `${10 + auraEnergy * 7}px`,
-                      ["--aura-start-opacity" as any]: `${0.18 + auraEnergy * 0.16}`,
-                      boxShadow: isLight
-                        ? `0 0 ${12 + auraEnergy * 22}px rgba(251, 191, 36, ${0.12 + auraEnergy * 0.08})`
-                        : `0 0 ${14 + auraEnergy * 26}px rgba(16, 185, 129, ${0.1 + auraEnergy * 0.1})`,
+                      borderColor: `rgba(${auraRgb}, ${0.24 + auraEnergy * 0.15})`,
+                      ["--aura-duration" as any]: primaryAuraDuration,
+                      ["--aura-scale" as any]: `${1.32 + auraEnergy * 0.08}`,
+                      ["--aura-thickness" as any]: `${14 + auraEnergy * 6}px`,
+                      ["--aura-start-opacity" as any]: `${0.24 + auraEnergy * 0.1}`,
+                      boxShadow: `0 0 ${16 + auraEnergy * 14}px rgba(${auraRgb}, ${0.1 + auraEnergy * 0.06})`,
                     }}
                   />
                   <div
                     className={cn(
-                      "absolute rounded-full border transition-all duration-300 animate-voice-aura",
-                      isLight ? "border-orange-200/45" : "border-cyan-200/18"
+                      "absolute rounded-full border transition-all duration-700 animate-voice-aura"
                     )}
                     style={{
-                      inset: `-${ringInset + 8}px`,
-                      animationDelay: "1.05s",
-                      ["--aura-duration" as any]: `${Math.max(2.95, 3.7 - auraEnergy * 0.45).toFixed(2)}s`,
-                      ["--aura-scale" as any]: `${1.62 + auraEnergy * 0.14}`,
-                      ["--aura-thickness" as any]: `${8 + auraEnergy * 5}px`,
-                      ["--aura-start-opacity" as any]: `${0.12 + auraEnergy * 0.1}`,
+                      inset: `-${ringInset + 10}px`,
+                      animationDelay: "1.65s",
+                      borderColor: `rgba(${auraRgb}, ${0.16 + auraEnergy * 0.08})`,
+                      ["--aura-duration" as any]: secondaryAuraDuration,
+                      ["--aura-scale" as any]: `${1.5 + auraEnergy * 0.1}`,
+                      ["--aura-thickness" as any]: `${10 + auraEnergy * 4}px`,
+                      ["--aura-start-opacity" as any]: `${0.16 + auraEnergy * 0.08}`,
                     }}
                   />
                 </>
@@ -737,14 +837,14 @@ export function FallbackRoom({
                 className={cn(
                   "relative h-52 w-52 overflow-hidden rounded-full border shadow-2xl transition-all duration-150 sm:h-60 sm:w-60",
                   isLight
-                    ? "border-white/80 bg-white/70 shadow-amber-100"
-                    : "border-white/10 bg-white/5 shadow-black/30"
+                    ? "border-[#f6e6bd]/95 bg-white/78 shadow-amber-100"
+                    : "border-[#f1d68e]/35 bg-white/5 shadow-black/30"
                 )}
                 style={{
                   transform: `scale(${avatarScale})`,
                   boxShadow: isLight
-                    ? `0 28px 70px rgba(251, 191, 36, ${0.12 + auraEnergy * 0.14})`
-                    : `0 28px 70px rgba(0, 0, 0, 0.42), 0 0 ${22 + auraEnergy * 36}px rgba(16, 185, 129, ${0.06 + auraEnergy * 0.1})`,
+                    ? `0 28px 70px rgba(${auraRgb}, ${0.12 + auraEnergy * 0.08})`
+                    : `0 28px 70px rgba(0, 0, 0, 0.42), 0 0 ${18 + auraEnergy * 18}px rgba(${auraRgb}, ${0.08 + auraEnergy * 0.05})`,
                 }}
               >
                 <div
@@ -780,26 +880,26 @@ export function FallbackRoom({
               </p>
             </div>
 
-            <div className="relative mb-6 flex h-44 w-full max-w-3xl items-center justify-center overflow-hidden px-4 sm:h-48">
+            <div className="relative mb-6 flex h-44 w-full max-w-3xl items-center justify-center overflow-hidden rounded-[28px] px-4 sm:h-48">
               <div
                 className={cn(
-                  "absolute inset-x-8 inset-y-6 rounded-[32px] opacity-90 blur-2xl",
+                  "absolute inset-x-4 inset-y-4 rounded-[28px] opacity-90 blur-[18px]",
                   isLight
-                    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.16)_36%,rgba(255,255,255,0))]"
-                    : "bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05)_36%,rgba(255,255,255,0))]"
+                    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.5),rgba(255,255,255,0.16)_36%,rgba(255,255,255,0))]"
+                    : "bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04)_36%,rgba(255,255,255,0))]"
                 )}
               />
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-10 inset-y-4 rounded-[36px]",
+                  "pointer-events-none absolute inset-x-0 inset-y-0 rounded-[28px]",
                   isLight
-                    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.35),rgba(255,255,255,0.08)_32%,rgba(255,255,255,0))]"
-                    : "bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03)_32%,rgba(255,255,255,0))]"
+                    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.22),rgba(255,255,255,0.07)_32%,rgba(255,255,255,0))]"
+                    : "bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02)_32%,rgba(255,255,255,0))]"
                 )}
               />
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-0 top-0 h-16",
+                  "pointer-events-none absolute inset-x-0 top-0 h-16 rounded-t-[28px]",
                   isLight
                     ? "bg-gradient-to-b from-[#f8f6f1] via-[#f8f6f1]/88 to-transparent"
                     : "bg-gradient-to-b from-[rgba(6,6,8,0.92)] via-[rgba(6,6,8,0.72)] to-transparent"
@@ -807,7 +907,7 @@ export function FallbackRoom({
               />
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-x-0 bottom-0 h-20",
+                  "pointer-events-none absolute inset-x-0 bottom-0 h-20 rounded-b-[28px]",
                   isLight
                     ? "bg-gradient-to-t from-[#f8f6f1] via-[#f8f6f1]/94 to-transparent"
                     : "bg-gradient-to-t from-[rgba(6,6,8,0.95)] via-[rgba(6,6,8,0.72)] to-transparent"
@@ -1019,11 +1119,6 @@ export function FallbackRoom({
             </div>
 
             <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 scroll-smooth sm:px-5">
-              <div className={cn("rounded-2xl px-4 py-3", isLight ? "bg-white/75 text-slate-700" : "bg-white/5 text-white/70")}>
-                <p className={cn("mb-1 text-[11px]", isLight ? "text-slate-400" : "text-white/35")}>{character.name}</p>
-                <p className="text-sm leading-6">{character.greeting}</p>
-              </div>
-
               {messages.map((message) => (
                 <div key={message.id} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
                   <div className={cn("max-w-[88%] min-w-0 space-y-2", message.role === "user" && "items-end")}>
