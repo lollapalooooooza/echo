@@ -25,7 +25,11 @@ export type RunwayRealtimeSessionCredentials = {
 export async function createRealtimeSession(
   avatarId: string,
   maxDuration = 300,
-  options?: { enableClientEvents?: boolean }
+  options?: {
+    enableClientEvents?: boolean;
+    personality?: string;
+    startScript?: string;
+  }
 ): Promise<{ id: string }> {
   const client = getRunwayClient();
   const params = {
@@ -35,6 +39,8 @@ export async function createRealtimeSession(
       avatarId,
     },
     maxDuration,
+    personality: options?.personality,
+    startScript: options?.startScript,
     ...(options?.enableClientEvents ? { tools: runwayClientEventTools } : {}),
   };
 

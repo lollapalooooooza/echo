@@ -12,6 +12,7 @@ import {
   getRealtimeSession,
   type RunwayRealtimeSession,
 } from "@/services/runwayRealtime";
+import { buildRunwaySessionPersonality } from "@/services/runwayVoice";
 
 const DEFAULT_MAX_DURATION = 300;
 const SESSION_READY_TIMEOUT_MS = 30_000;
@@ -81,10 +82,20 @@ export async function POST(req: NextRequest) {
     }
 
     const clientEventsEnabled = avatar.voice?.type === "runway-live-preset";
+    const sessionPersonality = buildRunwaySessionPersonality({
+      name: character.name,
+      bio: character.bio,
+      tone: character.personalityTone,
+      enableArticleTool: clientEventsEnabled,
+    });
     const created = await createRealtimeSession(
       character.runwayCharacterId.trim(),
       clampMaxDuration(body?.maxDuration),
-      { enableClientEvents: clientEventsEnabled }
+      {
+        enableClientEvents: clientEventsEnabled,
+        personality: sessionPersonality,
+        startScript: character.greeting?.trim() || undefined,
+      }
     );
     const deadline = Date.now() + SESSION_READY_TIMEOUT_MS;
     let liveSession: RunwayRealtimeSession | { id: string; status: "NOT_READY" } = {

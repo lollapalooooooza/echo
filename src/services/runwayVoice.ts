@@ -257,3 +257,27 @@ export function buildRunwayPersonality(input: {
 
   return adjectives.slice(0, 8).join(", ");
 }
+
+export function buildRunwaySessionPersonality(input: {
+  name?: string | null;
+  bio?: string | null;
+  tone?: string | null;
+  enableArticleTool?: boolean;
+}) {
+  const adjectives = buildRunwayPersonality(input);
+  const bioSnippet = sanitizeRunwayBio(input.bio || "", input.name?.trim() || "").slice(0, 360);
+
+  const instructions = [
+    `Speaking style: ${adjectives}.`,
+    bioSnippet ? `Stay grounded in this profile: ${bioSnippet}.` : null,
+    "Have a natural real-time conversation, listen carefully, and answer clearly and directly.",
+    "Use the attached knowledge documents whenever they help answer the visitor accurately.",
+    input.enableArticleTool
+      ? "If the visitor explicitly asks to open, read, inspect, or see the article, post, source, newsletter, or original write-up behind your answer, immediately send the show_article_overlay client event once. Put the best article title, author, publication, or topic into articleHint so the UI can surface the correct reading link. Do not use this tool for normal conversation."
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return instructions;
+}

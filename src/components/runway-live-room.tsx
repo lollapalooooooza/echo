@@ -24,6 +24,7 @@ import {
   UserVideo,
   VideoTrack,
   type SessionCredentials,
+  useLocalMedia,
   useAvatarSession,
 } from "@runwayml/avatars-react";
 
@@ -105,6 +106,49 @@ function CharacterPlaceholder({
   );
 }
 
+function LiveMicBanner({ theme }: { theme: RoomTheme }) {
+  const { hasMic, isMicEnabled, micError, retryMic } = useLocalMedia();
+  const isLight = theme === "light";
+
+  if (!micError && hasMic && isMicEnabled) {
+    return null;
+  }
+
+  const message = micError
+    ? "Microphone access failed. Close other apps using your mic or re-allow browser permission, then retry."
+    : !hasMic
+      ? "No microphone was detected for this session."
+      : "Your microphone is off, so the live character cannot hear you yet.";
+
+  return (
+    <div
+      className={cn(
+        "mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm",
+        isLight
+          ? "border-amber-200 bg-amber-50/90 text-amber-900"
+          : "border-amber-300/20 bg-amber-300/10 text-amber-50"
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+        <p className="max-w-2xl leading-6">{message}</p>
+      </div>
+      {micError && (
+        <button
+          type="button"
+          onClick={() => void retryMic()}
+          className={cn(
+            "inline-flex h-9 items-center rounded-full px-4 text-xs font-medium transition-colors",
+            isLight ? "bg-white text-amber-900 hover:bg-amber-100" : "bg-white/10 text-white hover:bg-white/15"
+          )}
+        >
+          Retry mic
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RunwaySessionSurface({
   character,
   theme,
@@ -118,8 +162,8 @@ function RunwaySessionSurface({
   const isLight = theme === "light";
 
   return (
-    <div className="flex h-full min-h-[32rem] flex-col lg:min-h-0">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className={cn("text-[11px] font-medium uppercase tracking-[0.24em]", isLight ? "text-emerald-700/80" : "text-emerald-200/70")}>
             Runway Live Character
@@ -141,7 +185,14 @@ function RunwaySessionSurface({
         </div>
       </div>
 
-      <div className={cn("relative flex-1 overflow-hidden rounded-[28px] border", isLight ? "border-white/70 bg-white/60" : "border-white/10 bg-black")}>
+      <LiveMicBanner theme={theme} />
+
+      <div
+        className={cn(
+          "relative flex min-h-[20rem] flex-1 overflow-hidden rounded-[28px] border md:min-h-[24rem] lg:min-h-0",
+          isLight ? "border-white/70 bg-white/60" : "border-white/10 bg-black"
+        )}
+      >
         <AvatarVideo>
           {(avatar) => {
             if (avatar.status === "ready") {
@@ -201,25 +252,27 @@ function RunwaySessionSurface({
         </UserVideo>
       </div>
 
-      <ControlBar showScreenShare>
-        {(controls) => (
-          <div className="mt-4 flex flex-wrap justify-center gap-3">
-            <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-4 w-4" />} theme={theme} />
-            <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-4 w-4" />} theme={theme} />
-            <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-4 w-4" />} theme={theme} />
-            <button
-              onClick={() => void controls.endCall()}
-              className={cn(
-                "inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium text-white transition-colors",
-                theme === "light" ? "bg-rose-500 hover:bg-rose-600" : "bg-red-500/85 hover:bg-red-500"
-              )}
-            >
-              <PhoneOff className="h-4 w-4" />
-              End live call
-            </button>
-          </div>
-        )}
-      </ControlBar>
+      <div className="mt-4 shrink-0">
+        <ControlBar showScreenShare>
+          {(controls) => (
+            <div className="flex flex-wrap justify-center gap-3">
+              <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-4 w-4" />} theme={theme} />
+              <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-4 w-4" />} theme={theme} />
+              <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-4 w-4" />} theme={theme} />
+              <button
+                onClick={() => void controls.endCall()}
+                className={cn(
+                  "inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium text-white transition-colors",
+                  theme === "light" ? "bg-rose-500 hover:bg-rose-600" : "bg-red-500/85 hover:bg-red-500"
+                )}
+              >
+                <PhoneOff className="h-4 w-4" />
+                End live call
+              </button>
+            </div>
+          )}
+        </ControlBar>
+      </div>
     </div>
   );
 }
@@ -339,7 +392,7 @@ export function RunwayLiveRoom({
   const canRetry = connection.status === "error" || connection.status === "ended";
 
   return (
-    <div className={cn("relative min-h-screen transition-colors duration-500", isLight ? "bg-[#f8f6f1] text-slate-900" : "room-backdrop text-white")}>
+    <div className={cn("relative min-h-[100dvh] transition-colors duration-500", isLight ? "bg-[#f8f6f1] text-slate-900" : "room-backdrop text-white")}>
       <div
         className={cn(
           "pointer-events-none absolute inset-0",
@@ -388,18 +441,14 @@ export function RunwayLiveRoom({
         </div>
       </header>
 
-      <div
-        className={cn(
-          "relative z-10 mx-auto max-w-7xl px-5 pb-6 lg:h-[calc(100vh-6.5rem)] lg:overflow-hidden lg:pb-8"
-        )}
-      >
-        <div className="min-w-0 lg:h-full">
+      <div className="relative z-10 mx-auto flex max-w-7xl min-h-[calc(100dvh-5.5rem)] flex-col px-5 pb-6 sm:px-6 lg:pb-8">
+        <div className="min-w-0 flex-1">
           {connection.status === "ready" ? (
             <AvatarSession
               key={`${character.id}:${attempt}`}
               credentials={connection.credentials}
               audio
-              video
+              video={false}
               onEnd={() => setConnection({ status: "ended" })}
               onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
             >

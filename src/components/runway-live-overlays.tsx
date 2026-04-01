@@ -146,6 +146,11 @@ export function RunwayLiveOverlays({
     (args: ShowArticleOverlayArgs) => {
       if (!clientEventsEnabled) return;
 
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+
       const articleHint = compactText(args.articleHint);
       if (!articleHint) return;
 
@@ -165,10 +170,6 @@ export function RunwayLiveOverlays({
   }, []);
 
   useEffect(() => {
-    if (clientEventsEnabled) {
-      return;
-    }
-
     const latestUser = latestStreams.latestUser;
     const utterance = compactText(latestUser?.text);
 
