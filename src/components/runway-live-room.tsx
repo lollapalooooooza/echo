@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -56,6 +56,18 @@ async function readResponse(response: Response) {
         .trim()
         .slice(0, 200) || `Request failed with status ${response.status}`,
   };
+}
+
+function formatElapsed(seconds: number) {
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hrs > 0) {
+    return [hrs, mins, secs].map((value) => String(value).padStart(2, "0")).join(":");
+  }
+
+  return [mins, secs].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
 function CharacterPlaceholder({
@@ -201,33 +213,141 @@ function RunwaySessionSurface({
   const session = useAvatarSession();
   const isLight = theme === "light";
   const [videoReady, setVideoReady] = useState(false);
+  const [overlayTone, setOverlayTone] = useState<"light" | "dark">(isLight ? "dark" : "light");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const avatarStageRef = useRef<HTMLDivElement | null>(null);
+  const sessionStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!videoReady) {
+      setOverlayTone(isLight ? "dark" : "light");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 28;
+    canvas.height = 20;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (!context) {
+      return;
+    }
+
+    const sampleTone = () => {
+      const video = avatarStageRef.current?.querySelector("video");
+      if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+        return;
+      }
+
+      try {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const sampleHeight = Math.max(4, Math.floor(canvas.height * 0.35));
+        const frame = context.getImageData(0, 0, canvas.width, sampleHeight).data;
+
+        let luminanceTotal = 0;
+        let pixels = 0;
+
+        for (let index = 0; index < frame.length; index += 4) {
+          const alpha = frame[index + 3] / 255;
+          if (alpha < 0.2) continue;
+
+          const red = frame[index];
+          const green = frame[index + 1];
+          const blue = frame[index + 2];
+          luminanceTotal += 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+          pixels += 1;
+        }
+
+        if (pixels > 0) {
+          setOverlayTone(luminanceTotal / pixels > 158 ? "dark" : "light");
+        }
+      } catch {
+        // Some runtimes may block sampling video frames; keep the fallback tone.
+      }
+    };
+
+    sampleTone();
+    const intervalId = window.setInterval(sampleTone, 1500);
+    return () => window.clearInterval(intervalId);
+  }, [videoReady, isLight]);
+
+  useEffect(() => {
+    if (!videoReady || session.state !== "active") {
+      if (session.state !== "active") {
+        sessionStartedAtRef.current = null;
+        setElapsedSeconds(0);
+      }
+      return;
+    }
+
+    if (sessionStartedAtRef.current === null) {
+      sessionStartedAtRef.current = Date.now();
+    }
+
+    const tick = () => {
+      if (sessionStartedAtRef.current === null) return;
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - sessionStartedAtRef.current) / 1000)));
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [session.state, videoReady]);
+
+  const useDarkText = overlayTone === "dark";
+  const overlayTextClass = useDarkText ? "text-slate-950" : "text-white";
+  const topGradientClass = useDarkText
+    ? "bg-gradient-to-b from-white/42 via-white/10 to-transparent"
+    : "bg-gradient-to-b from-black/28 via-black/8 to-transparent";
+  const badgeClass = useDarkText
+    ? "bg-white/70 text-slate-950"
+    : "bg-black/32 text-white";
+  const iconButtonBaseClass = useDarkText
+    ? "bg-white/58 text-slate-950 hover:bg-white/72"
+    : "bg-black/26 text-white hover:bg-black/36";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
-          "relative flex min-h-0 flex-1 overflow-hidden rounded-[32px] border",
-          isLight ? "border-white/70 bg-white/60" : "border-white/10 bg-black"
+          "relative flex min-h-0 flex-1 overflow-hidden rounded-[32px]",
+          videoReady
+            ? isLight
+              ? "bg-white/30 ring-1 ring-black/5"
+              : "bg-black/30 ring-1 ring-white/10"
+            : "bg-transparent"
         )}
       >
-        <AvatarVideo>
-          {(avatar) => (
-            <RunwayAvatarStage
-              avatar={avatar}
-              character={character}
-              theme={theme}
-              onVideoReadyChange={setVideoReady}
-            />
-          )}
-        </AvatarVideo>
+        <div ref={avatarStageRef} className="absolute inset-0">
+          <AvatarVideo>
+            {(avatar) => (
+              <RunwayAvatarStage
+                avatar={avatar}
+                character={character}
+                theme={theme}
+                onVideoReadyChange={setVideoReady}
+              />
+            )}
+          </AvatarVideo>
+        </div>
 
         {videoReady && (
           <>
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-x-0 top-0 z-10 h-28 backdrop-blur-[14px]",
+                topGradientClass
+              )}
+            />
+
             <div className="pointer-events-none absolute left-5 top-5 right-24 z-20 sm:left-6 sm:top-6">
               <h2
                 className={cn(
-                  "max-w-xl text-[clamp(1.6rem,3vw,2.7rem)] leading-[0.94] tracking-[-0.03em] drop-shadow-[0_6px_24px_rgba(0,0,0,0.28)]",
-                  isLight ? "text-slate-950" : "text-white"
+                  "max-w-[18rem] text-[clamp(1.2rem,2vw,1.75rem)] leading-[0.96] tracking-[-0.03em]",
+                  overlayTextClass,
+                  useDarkText
+                    ? "drop-shadow-[0_1px_8px_rgba(255,255,255,0.16)]"
+                    : "drop-shadow-[0_1px_10px_rgba(0,0,0,0.22)]"
                 )}
                 style={{ fontFamily: "var(--font-display)" }}
               >
@@ -238,12 +358,20 @@ function RunwaySessionSurface({
             <div className="pointer-events-none absolute right-5 top-5 z-20 sm:right-6 sm:top-6">
               <div
                 className={cn(
-                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] shadow-lg backdrop-blur-xl",
-                  isLight ? "bg-white/76 text-emerald-700 shadow-slate-200/80" : "bg-black/34 text-emerald-100 shadow-black/35"
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] shadow-[0_4px_10px_rgba(15,23,42,0.08)] backdrop-blur-xl",
+                  badgeClass
                 )}
               >
-                <span className="live-dot" style={{ width: 6, height: 6 }} />
-                {session.state === "active" ? "Live" : session.state === "connecting" ? "Joining" : "Connected"}
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{
+                    background: "radial-gradient(circle at 35% 35%, #ffd5c7 0%, #ff6a3d 42%, #ff4c1f 100%)",
+                    boxShadow: "0 0 10px rgba(255,106,61,0.28)",
+                  }}
+                />
+                <span>Live</span>
+                <span className={cn("h-3.5 w-px", useDarkText ? "bg-slate-300/80" : "bg-white/24")} />
+                <span>{formatElapsed(elapsedSeconds)}</span>
               </div>
             </div>
 
@@ -255,30 +383,26 @@ function RunwaySessionSurface({
               clientEventsEnabled={clientEventsEnabled}
             />
 
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-black/30 via-black/12 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/16 via-black/4 to-transparent" />
 
             <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
-              <div
-                className={cn(
-                  "pointer-events-auto flex flex-wrap justify-center gap-3 rounded-[28px] px-4 py-3 backdrop-blur-2xl sm:px-5",
-                  isLight ? "bg-white/76 shadow-xl shadow-slate-200/85" : "bg-black/34 shadow-2xl shadow-black/35"
-                )}
-              >
+              <div className="pointer-events-auto flex flex-wrap justify-center gap-3 sm:gap-4">
                 <ControlBar showScreenShare>
                   {(controls) => (
                     <>
-                      <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-4 w-4" />} theme={theme} />
-                      <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-4 w-4" />} theme={theme} />
-                      <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-4 w-4" />} theme={theme} />
+                      <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-5 w-5" />} overlayClass={iconButtonBaseClass} activeClass={useDarkText ? "bg-slate-950/86 text-white" : "bg-white/18 text-white"} />
+                      <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-5 w-5" />} overlayClass={iconButtonBaseClass} activeClass={useDarkText ? "bg-slate-950/86 text-white" : "bg-white/18 text-white"} />
+                      <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-5 w-5" />} overlayClass={iconButtonBaseClass} activeClass={useDarkText ? "bg-slate-950/86 text-white" : "bg-white/18 text-white"} />
                       <button
                         onClick={() => void controls.endCall()}
+                        aria-label="End live call"
+                        title="End live call"
                         className={cn(
-                          "inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium text-white transition-colors",
-                          theme === "light" ? "bg-rose-500 hover:bg-rose-600" : "bg-red-500/85 hover:bg-red-500"
+                          "inline-flex h-14 w-14 items-center justify-center rounded-full text-white transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)]",
+                          theme === "light" ? "bg-[#ff5a36]/96 hover:bg-[#ff4b22]" : "bg-[#ff5a36]/92 hover:bg-[#ff4b22]"
                         )}
                       >
-                        <PhoneOff className="h-4 w-4" />
-                        End live call
+                        <PhoneOff className="h-5 w-5" />
                       </button>
                     </>
                   )}
@@ -291,8 +415,10 @@ function RunwaySessionSurface({
                 user.hasVideo && user.trackRef && isTrackReference(user.trackRef) ? (
                   <div
                     className={cn(
-                      "absolute bottom-24 right-5 h-28 w-20 overflow-hidden rounded-[20px] border shadow-2xl backdrop-blur-sm sm:bottom-28 sm:right-6",
-                      isLight ? "border-white/80 bg-white/70 shadow-slate-300/50" : "border-white/15 bg-black/60 shadow-black/30"
+                      "absolute bottom-24 right-5 h-28 w-20 overflow-hidden rounded-[20px] border backdrop-blur-sm sm:bottom-28 sm:right-6",
+                      useDarkText
+                        ? "border-white/72 bg-white/44 shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
+                        : "border-white/16 bg-black/24 shadow-[0_4px_12px_rgba(0,0,0,0.16)]"
                     )}
                   >
                     <VideoTrack trackRef={user.trackRef} className="h-full w-full object-cover" />
@@ -312,30 +438,27 @@ function LiveControlButton({
   onClick,
   label,
   icon,
-  theme,
+  overlayClass,
+  activeClass,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   icon: ReactNode;
-  theme: RoomTheme;
+  overlayClass: string;
+  activeClass: string;
 }) {
   return (
     <button
       onClick={onClick}
+      aria-label={label}
+      title={label}
       className={cn(
-        "inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
-        theme === "light"
-          ? active
-            ? "bg-slate-900 text-white hover:bg-slate-700"
-            : "bg-white text-slate-700 hover:bg-slate-100"
-          : active
-            ? "bg-white/12 text-white hover:bg-white/18"
-            : "bg-white/5 text-white/55 hover:bg-white/10"
+        "inline-flex h-14 w-14 items-center justify-center rounded-full transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)]",
+        active ? activeClass : overlayClass
       )}
     >
       {icon}
-      {label}
     </button>
   );
 }
