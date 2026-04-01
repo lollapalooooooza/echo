@@ -42,6 +42,11 @@ export type ArticleOverlayResult =
       };
     };
 
+type OverlayDisplayOptions = {
+  reason?: string | null;
+  ctaLabel?: string | null;
+};
+
 function compactText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
@@ -118,33 +123,10 @@ function buildCandidateList(candidates: ArticleCandidate[]) {
     .join("\n\n---\n\n");
 }
 
-function heuristicArticleOverlay(utterance: string, candidates: ArticleCandidate[]): ArticleOverlayResult {
-  if (!ARTICLE_REQUEST_PATTERN.test(utterance) || candidates.length === 0) {
-    return { shouldShow: false };
-  }
-
-  const chosen = candidates[0];
-  if (!chosen?.url) return { shouldShow: false };
-
-  return {
-    shouldShow: true,
-    article: {
-      sourceId: chosen.sourceId,
-      title: chosen.title,
-      url: chosen.url,
-      excerpt: chosen.excerpt,
-      topic: chosen.topic,
-      publishDate: chosen.publishDate,
-      reason: "This looks like the closest article behind what the visitor asked to read next.",
-      ctaLabel: "Open article",
-    },
-  };
-}
-
-export async function selectArticleOverlay(characterId: string, utterance: string): Promise<ArticleOverlayResult> {
-  const normalizedUtterance = compactText(utterance);
-  if (normalizedUtterance.length < 12 || !ARTICLE_REQUEST_PATTERN.test(normalizedUtterance)) {
-    return { shouldShow: false };
+async function fetchArticleCandidates(characterId: string, query: string) {
+  const normalizedQuery = compactText(query);
+  if (normalizedQuery.length < 3) {
+    return [] as ArticleCandidate[];
   }
 
   const character = await db.character.findUnique({
@@ -159,10 +141,61 @@ export async function selectArticleOverlay(characterId: string, utterance: strin
   const linkedSourceIds = await getLinkedSourceIds(characterId);
   const chunks =
     linkedSourceIds.length > 0
-      ? await searchScopedSimilar(normalizedUtterance, linkedSourceIds, 8, 0.18)
-      : await searchSimilar(normalizedUtterance, character.userId, 8, 0.18);
+      ? await searchScopedSimilar(normalizedQuery, linkedSourceIds, 8, 0.18)
+      : await searchSimilar(normalizedQuery, character.userId, 8, 0.18);
 
-  const candidates = buildArticleReferences(chunks);
+  return buildArticleReferences(chunks);
+}
+
+function toOverlayResult(
+  article: ArticleCandidate | undefined,
+  display?: OverlayDisplayOptions
+): ArticleOverlayResult {
+  if (!article?.url) {
+    return { shouldShow: false };
+  }
+
+  return {
+    shouldShow: true,
+    article: {
+      sourceId: article.sourceId,
+      title: article.title,
+      url: article.url,
+      excerpt: article.excerpt,
+      topic: article.topic,
+      publishDate: article.publishDate,
+      reason:
+        clampText(display?.reason, 120) ||
+        "This looks like the closest article behind what the visitor asked to read next.",
+      ctaLabel: clampText(display?.ctaLabel, 28) || "Open article",
+    },
+  };
+}
+
+function heuristicArticleOverlay(utterance: string, candidates: ArticleCandidate[]): ArticleOverlayResult {
+  if (!ARTICLE_REQUEST_PATTERN.test(utterance) || candidates.length === 0) {
+    return { shouldShow: false };
+  }
+
+  return toOverlayResult(candidates[0]);
+}
+
+export async function resolveArticleOverlayHint(
+  characterId: string,
+  hint: string,
+  display?: OverlayDisplayOptions
+): Promise<ArticleOverlayResult> {
+  const candidates = await fetchArticleCandidates(characterId, hint);
+  return toOverlayResult(candidates[0], display);
+}
+
+export async function selectArticleOverlay(characterId: string, utterance: string): Promise<ArticleOverlayResult> {
+  const normalizedUtterance = compactText(utterance);
+  if (normalizedUtterance.length < 12 || !ARTICLE_REQUEST_PATTERN.test(normalizedUtterance)) {
+    return { shouldShow: false };
+  }
+
+  const candidates = await fetchArticleCandidates(characterId, normalizedUtterance);
   if (candidates.length === 0) {
     return { shouldShow: false };
   }
@@ -238,23 +271,10 @@ export async function selectArticleOverlay(characterId: string, utterance: strin
     };
 
     const chosen = candidates.find((candidate) => candidate.sourceId === input.sourceId);
-    if (!chosen?.url) {
-      return { shouldShow: false };
-    }
-
-    return {
-      shouldShow: true,
-      article: {
-        sourceId: chosen.sourceId,
-        title: chosen.title,
-        url: chosen.url,
-        excerpt: chosen.excerpt,
-        topic: chosen.topic,
-        publishDate: chosen.publishDate,
-        reason: clampText(input.reason, 120) || "This is the article most likely to deepen the conversation.",
-        ctaLabel: clampText(input.ctaLabel, 28) || "Open article",
-      },
-    };
+    return toOverlayResult(chosen, {
+      reason: input.reason || "This is the article most likely to deepen the conversation.",
+      ctaLabel: input.ctaLabel || "Open article",
+    });
   } catch (error) {
     console.warn("[ArticleOverlay] Tool call failed, falling back to heuristic selection:", error);
     return heuristicArticleOverlay(normalizedUtterance, candidates);

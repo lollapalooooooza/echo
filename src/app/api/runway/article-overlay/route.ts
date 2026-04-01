@@ -4,7 +4,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { selectArticleOverlay } from "@/services/articleOverlay";
+import {
+  resolveArticleOverlayHint,
+  selectArticleOverlay,
+} from "@/services/articleOverlay";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -43,9 +46,15 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const characterId = typeof body?.characterId === "string" ? body.characterId : "";
   const utterance = typeof body?.utterance === "string" ? body.utterance : "";
+  const articleHint = typeof body?.articleHint === "string" ? body.articleHint : "";
+  const reason = typeof body?.reason === "string" ? body.reason : "";
+  const ctaLabel = typeof body?.ctaLabel === "string" ? body.ctaLabel : "";
 
-  if (!characterId || !utterance.trim()) {
-    return NextResponse.json({ error: "characterId and utterance are required" }, { status: 400 });
+  if (!characterId || (!utterance.trim() && !articleHint.trim())) {
+    return NextResponse.json(
+      { error: "characterId and either utterance or articleHint are required" },
+      { status: 400 }
+    );
   }
 
   const character = await getAccessibleCharacter(characterId, userId);
@@ -54,7 +63,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await selectArticleOverlay(characterId, utterance);
+    const result = articleHint.trim()
+      ? await resolveArticleOverlayHint(characterId, articleHint, { reason, ctaLabel })
+      : await selectArticleOverlay(characterId, utterance);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json(

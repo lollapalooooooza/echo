@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, ExternalLink, X } from "lucide-react";
 import { useRoomContext, useTranscriptions } from "@livekit/components-react";
+import { useClientEvent } from "@runwayml/avatars-react";
 
+import type {
+  RunwayLiveClientEvent,
+  ShowArticleOverlayArgs,
+} from "@/lib/runway-client-events";
 import { cn } from "@/lib/utils";
 
 type RoomTheme = "light" | "dark";
@@ -34,12 +39,21 @@ function getHostname(url: string) {
   }
 }
 
+type ResolveOverlayInput = {
+  articleHint?: string;
+  utterance?: string;
+  reason?: string;
+  ctaLabel?: string;
+};
+
 export function RunwayLiveOverlays({
   character,
   theme,
+  clientEventsEnabled,
 }: {
   character: any;
   theme: RoomTheme;
+  clientEventsEnabled: boolean;
 }) {
   const room = useRoomContext();
   const transcriptions = useTranscriptions({ room });
@@ -59,41 +73,27 @@ export function RunwayLiveOverlays({
       (left, right) => left.streamInfo.timestamp - right.streamInfo.timestamp
     );
 
-    const latestUser = [...ordered].reverse().find((item) => item.participantInfo.identity === localIdentity) || null;
-    const latestAgent = [...ordered].reverse().find((item) => item.participantInfo.identity !== localIdentity) || null;
+    const latestUser =
+      [...ordered].reverse().find((item) => item.participantInfo.identity === localIdentity) ||
+      null;
+    const latestAgent =
+      [...ordered].reverse().find((item) => item.participantInfo.identity !== localIdentity) ||
+      null;
 
     return { latestUser, latestAgent };
   }, [localIdentity, transcriptions]);
 
   const captionText = compactText(latestStreams.latestAgent?.text);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
-    };
-  }, []);
+  const resolveOverlay = useCallback(
+    async (input: ResolveOverlayInput) => {
+      const articleHint = compactText(input.articleHint);
+      const utterance = compactText(input.utterance);
 
-  useEffect(() => {
-    const latestUser = latestStreams.latestUser;
-    const utterance = compactText(latestUser?.text);
+      if (!articleHint && !utterance) {
+        return;
+      }
 
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    if (!latestUser || utterance.length < 16 || !ARTICLE_HINT_PATTERN.test(utterance)) {
-      return;
-    }
-
-    const requestKey = `${latestUser.streamInfo.id}:${utterance}`;
-    if (lastProcessedKeyRef.current === requestKey) {
-      return;
-    }
-
-    timerRef.current = window.setTimeout(async () => {
-      lastProcessedKeyRef.current = requestKey;
       const requestId = ++requestSeqRef.current;
       setArticleLoading(true);
 
@@ -103,7 +103,10 @@ export function RunwayLiveOverlays({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             characterId: character.id,
+            articleHint,
             utterance,
+            reason: input.reason,
+            ctaLabel: input.ctaLabel,
           }),
         });
 
@@ -131,6 +134,61 @@ export function RunwayLiveOverlays({
           setArticleLoading(false);
         }
       }
+    },
+    [character.id]
+  );
+
+  const resolveOverlayRef = useRef(resolveOverlay);
+  resolveOverlayRef.current = resolveOverlay;
+
+  useClientEvent<RunwayLiveClientEvent, "show_article_overlay">(
+    "show_article_overlay",
+    (args: ShowArticleOverlayArgs) => {
+      if (!clientEventsEnabled) return;
+
+      const articleHint = compactText(args.articleHint);
+      if (!articleHint) return;
+
+      void resolveOverlayRef.current({
+        articleHint,
+        reason: args.reason,
+        ctaLabel: args.ctaLabel,
+      });
+    }
+  );
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+      if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (clientEventsEnabled) {
+      return;
+    }
+
+    const latestUser = latestStreams.latestUser;
+    const utterance = compactText(latestUser?.text);
+
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (!latestUser || utterance.length < 16 || !ARTICLE_HINT_PATTERN.test(utterance)) {
+      return;
+    }
+
+    const requestKey = `${latestUser.streamInfo.id}:${utterance}`;
+    if (lastProcessedKeyRef.current === requestKey) {
+      return;
+    }
+
+    timerRef.current = window.setTimeout(() => {
+      lastProcessedKeyRef.current = requestKey;
+      void resolveOverlayRef.current({ utterance });
     }, 1200);
 
     return () => {
@@ -139,7 +197,11 @@ export function RunwayLiveOverlays({
         timerRef.current = null;
       }
     };
-  }, [character.id, latestStreams.latestUser?.streamInfo.id, latestStreams.latestUser?.text]);
+  }, [
+    clientEventsEnabled,
+    latestStreams.latestUser?.streamInfo.id,
+    latestStreams.latestUser?.text,
+  ]);
 
   return (
     <>
@@ -164,13 +226,28 @@ export function RunwayLiveOverlays({
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className={cn("text-[11px] font-semibold uppercase tracking-[0.22em]", isLight ? "text-amber-700/70" : "text-amber-100/70")}>
+                <p
+                  className={cn(
+                    "text-[11px] font-semibold uppercase tracking-[0.22em]",
+                    isLight ? "text-amber-700/70" : "text-amber-100/70"
+                  )}
+                >
                   Article bubble
                 </p>
-                <p className={cn("mt-2 text-sm font-semibold leading-5", isLight ? "text-slate-900" : "text-white")}>
+                <p
+                  className={cn(
+                    "mt-2 text-sm font-semibold leading-5",
+                    isLight ? "text-slate-900" : "text-white"
+                  )}
+                >
                   {article.title}
                 </p>
-                <p className={cn("mt-2 text-xs leading-5", isLight ? "text-slate-600" : "text-white/68")}>
+                <p
+                  className={cn(
+                    "mt-2 text-xs leading-5",
+                    isLight ? "text-slate-600" : "text-white/68"
+                  )}
+                >
                   {article.reason}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -214,7 +291,9 @@ export function RunwayLiveOverlays({
                 onClick={() => setArticle(null)}
                 className={cn(
                   "inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors",
-                  isLight ? "bg-slate-100 text-slate-500 hover:text-slate-900" : "bg-white/10 text-white/50 hover:text-white"
+                  isLight
+                    ? "bg-slate-100 text-slate-500 hover:text-slate-900"
+                    : "bg-white/10 text-white/50 hover:text-white"
                 )}
                 aria-label="Dismiss article bubble"
               >
@@ -255,13 +334,17 @@ export function RunwayLiveOverlays({
                 <div
                   className={cn(
                     "absolute inset-x-0 top-0 h-12",
-                    isLight ? "bg-gradient-to-b from-[#f8f6f1] via-[#f8f6f1]/82 to-transparent" : "bg-gradient-to-b from-black/70 to-transparent"
+                    isLight
+                      ? "bg-gradient-to-b from-[#f8f6f1] via-[#f8f6f1]/82 to-transparent"
+                      : "bg-gradient-to-b from-black/70 to-transparent"
                   )}
                 />
                 <div
                   className={cn(
                     "absolute inset-x-0 bottom-0 h-12",
-                    isLight ? "bg-gradient-to-t from-[#f8f6f1] via-[#f8f6f1]/82 to-transparent" : "bg-gradient-to-t from-black/70 to-transparent"
+                    isLight
+                      ? "bg-gradient-to-t from-[#f8f6f1] via-[#f8f6f1]/82 to-transparent"
+                      : "bg-gradient-to-t from-black/70 to-transparent"
                   )}
                 />
                 <div

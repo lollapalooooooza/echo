@@ -80,7 +80,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const created = await createRealtimeSession(character.runwayCharacterId.trim(), clampMaxDuration(body?.maxDuration));
+    const clientEventsEnabled = avatar.voice?.type === "runway-live-preset";
+    const created = await createRealtimeSession(
+      character.runwayCharacterId.trim(),
+      clampMaxDuration(body?.maxDuration),
+      { enableClientEvents: clientEventsEnabled }
+    );
     const deadline = Date.now() + SESSION_READY_TIMEOUT_MS;
     let liveSession: RunwayRealtimeSession | { id: string; status: "NOT_READY" } = {
       id: created.id,
@@ -101,6 +106,7 @@ export async function POST(req: NextRequest) {
           serverUrl: credentials.url,
           token: credentials.token,
           roomName: credentials.roomName,
+          clientEventsEnabled,
         });
       }
 

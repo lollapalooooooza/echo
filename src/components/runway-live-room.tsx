@@ -35,7 +35,7 @@ const ROOM_THEME_STORAGE_KEY = "echonest-room-theme";
 
 type ConnectionState =
   | { status: "connecting" }
-  | { status: "ready"; credentials: SessionCredentials }
+  | { status: "ready"; credentials: SessionCredentials; clientEventsEnabled: boolean }
   | { status: "error"; error: string }
   | { status: "ended" };
 
@@ -105,7 +105,15 @@ function CharacterPlaceholder({
   );
 }
 
-function RunwaySessionSurface({ character, theme }: { character: any; theme: RoomTheme }) {
+function RunwaySessionSurface({
+  character,
+  theme,
+  clientEventsEnabled,
+}: {
+  character: any;
+  theme: RoomTheme;
+  clientEventsEnabled: boolean;
+}) {
   const session = useAvatarSession();
   const isLight = theme === "light";
 
@@ -162,7 +170,11 @@ function RunwaySessionSurface({ character, theme }: { character: any; theme: Roo
           }}
         </AvatarVideo>
 
-        <RunwayLiveOverlays character={character} theme={theme} />
+        <RunwayLiveOverlays
+          character={character}
+          theme={theme}
+          clientEventsEnabled={clientEventsEnabled}
+        />
 
         <div
           className={cn(
@@ -305,6 +317,7 @@ export function RunwayLiveRoom({
             token: data.token,
             roomName: data.roomName,
           },
+          clientEventsEnabled: data.clientEventsEnabled !== false,
         });
       } catch (error: any) {
         if (!cancelled) {
@@ -390,7 +403,11 @@ export function RunwayLiveRoom({
               onEnd={() => setConnection({ status: "ended" })}
               onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
             >
-              <RunwaySessionSurface character={character} theme={roomTheme} />
+              <RunwaySessionSurface
+                character={character}
+                theme={roomTheme}
+                clientEventsEnabled={connection.clientEventsEnabled}
+              />
             </AvatarSession>
           ) : connection.status === "connecting" ? (
             <CharacterPlaceholder
