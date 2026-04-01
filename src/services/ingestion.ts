@@ -81,19 +81,19 @@ async function processAndStoreChunks(
   text: string
 ): Promise<number> {
   const textChunks = chunkText(text);
-  const records = await Promise.all(
-    textChunks.map((tc) =>
-      db.contentChunk.create({
-        data: {
-          sourceId,
-          chunkIndex: tc.index,
-          content: tc.content,
-          heading: tc.heading,
-          tokenCount: Math.ceil(tc.content.length / 4),
-        },
-      })
-    )
-  );
+  const records = await db.contentChunk.createManyAndReturn({
+    data: textChunks.map((tc) => ({
+      sourceId,
+      chunkIndex: tc.index,
+      content: tc.content,
+      heading: tc.heading,
+      tokenCount: Math.ceil(tc.content.length / 4),
+    })),
+    select: {
+      id: true,
+      content: true,
+    },
+  });
   await storeEmbeddings(records.map((c) => ({ id: c.id, content: c.content })));
   return records.length;
 }
