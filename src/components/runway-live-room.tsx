@@ -132,7 +132,7 @@ function LiveMicBanner({ theme }: { theme: RoomTheme }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto absolute inset-x-4 top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border px-4 py-3 text-sm shadow-lg backdrop-blur-2xl sm:left-auto sm:right-4 sm:max-w-[28rem]",
+        "pointer-events-auto absolute inset-x-4 top-20 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border px-4 py-3 text-sm shadow-lg backdrop-blur-2xl sm:left-auto sm:right-4 sm:max-w-[28rem]",
         isLight
           ? "border-amber-200/90 bg-white/88 text-amber-900 shadow-amber-100"
           : "border-amber-300/20 bg-black/58 text-amber-50 shadow-black/40"
@@ -158,6 +158,37 @@ function LiveMicBanner({ theme }: { theme: RoomTheme }) {
   );
 }
 
+function RunwayAvatarStage({
+  avatar,
+  character,
+  theme,
+  onVideoReadyChange,
+}: {
+  avatar: any;
+  character: any;
+  theme: RoomTheme;
+  onVideoReadyChange: (ready: boolean) => void;
+}) {
+  const hasVideoTrack = avatar.status === "ready" && isTrackReference(avatar.videoTrackRef);
+
+  useEffect(() => {
+    onVideoReadyChange(hasVideoTrack);
+  }, [hasVideoTrack, onVideoReadyChange]);
+
+  if (hasVideoTrack) {
+    return <VideoTrack trackRef={avatar.videoTrackRef} className="h-full w-full object-cover" />;
+  }
+
+  return (
+    <CharacterPlaceholder
+      character={character}
+      label={avatar.status === "connecting" ? "Connecting" : "Preparing video"}
+      detail="Runway is bringing the live avatar online so you can talk directly with it in real time."
+      theme={theme}
+    />
+  );
+}
+
 function RunwaySessionSurface({
   character,
   theme,
@@ -169,9 +200,10 @@ function RunwaySessionSurface({
 }) {
   const session = useAvatarSession();
   const isLight = theme === "light";
+  const [videoReady, setVideoReady] = useState(false);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
           "relative flex min-h-0 flex-1 overflow-hidden rounded-[32px] border",
@@ -179,141 +211,97 @@ function RunwaySessionSurface({
         )}
       >
         <AvatarVideo>
-          {(avatar) => {
-            if (avatar.status === "ready") {
-              if (isTrackReference(avatar.videoTrackRef)) {
-                return <VideoTrack trackRef={avatar.videoTrackRef} className="h-full w-full object-cover" />;
-              }
-
-              return (
-                <CharacterPlaceholder
-                  character={character}
-                  label="Preparing video"
-                  detail="Runway is bringing the live avatar online so you can talk directly with it in real time."
-                  theme={theme}
-                />
-              );
-            }
-
-            return (
-              <CharacterPlaceholder
-                character={character}
-                label={avatar.status === "connecting" ? "Connecting" : "Preparing video"}
-                detail="Runway is bringing the live avatar online so you can talk directly with it in real time."
-                theme={theme}
-              />
-            );
-          }}
+          {(avatar) => (
+            <RunwayAvatarStage
+              avatar={avatar}
+              character={character}
+              theme={theme}
+              onVideoReadyChange={setVideoReady}
+            />
+          )}
         </AvatarVideo>
 
-        <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex justify-start sm:inset-x-5 sm:top-5">
-          <div
-            className={cn(
-              "max-w-[min(34rem,calc(100%-1rem))] rounded-[26px] border px-4 py-3 shadow-2xl backdrop-blur-2xl sm:px-5 sm:py-4",
-              isLight ? "border-white/80 bg-white/72 shadow-slate-200/80" : "border-white/12 bg-black/38 shadow-black/40"
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span
+        {videoReady && (
+          <>
+            <div className="pointer-events-none absolute left-5 top-5 right-24 z-20 sm:left-6 sm:top-6">
+              <h2
                 className={cn(
-                  "inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em]",
-                  isLight ? "bg-emerald-50 text-emerald-700" : "bg-emerald-300/10 text-emerald-100/88"
+                  "max-w-xl text-[clamp(1.6rem,3vw,2.7rem)] leading-[0.94] tracking-[-0.03em] drop-shadow-[0_6px_24px_rgba(0,0,0,0.28)]",
+                  isLight ? "text-slate-950" : "text-white"
+                )}
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {character.name}
+              </h2>
+            </div>
+
+            <div className="pointer-events-none absolute right-5 top-5 z-20 sm:right-6 sm:top-6">
+              <div
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] shadow-lg backdrop-blur-xl",
+                  isLight ? "bg-white/76 text-emerald-700 shadow-slate-200/80" : "bg-black/34 text-emerald-100 shadow-black/35"
                 )}
               >
                 <span className="live-dot" style={{ width: 6, height: 6 }} />
-                {session.state === "active" ? "Live now" : session.state === "connecting" ? "Joining live call" : "Connected"}
-              </span>
-              <span
-                className={cn(
-                  "text-[10px] font-semibold uppercase tracking-[0.24em]",
-                  isLight ? "text-slate-500" : "text-white/55"
-                )}
-              >
-                Runway Live Character
-              </span>
+                {session.state === "active" ? "Live" : session.state === "connecting" ? "Joining" : "Connected"}
+              </div>
             </div>
-            <h2
-              className={cn("mt-3 text-[clamp(1.7rem,3vw,2.55rem)] leading-[0.96]", isLight ? "text-slate-950" : "text-white")}
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {character.name}
-            </h2>
-          </div>
-        </div>
 
-        <LiveMicBanner theme={theme} />
+            <LiveMicBanner theme={theme} />
 
-        <RunwayLiveOverlays
-          character={character}
-          theme={theme}
-          clientEventsEnabled={clientEventsEnabled}
-        />
+            <RunwayLiveOverlays
+              character={character}
+              theme={theme}
+              clientEventsEnabled={clientEventsEnabled}
+            />
 
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 z-10",
-            isLight ? "bg-gradient-to-t from-[#f6f2ea] via-[#f6f2ea]/78 to-transparent" : "bg-gradient-to-t from-black/82 via-black/38 to-transparent"
-          )}
-        >
-          <div className="px-5 pb-5 pt-14 sm:px-6 sm:pb-6 sm:pt-16">
-            <p
-              className={cn(
-                "text-[10px] font-semibold uppercase tracking-[0.24em]",
-                isLight ? "text-slate-500/90" : "text-white/48"
-              )}
-            >
-              Character Bio
-            </p>
-            <p
-              className={cn("mt-2 max-w-4xl text-[15px] leading-7 sm:text-base sm:leading-8", isLight ? "text-slate-700" : "text-white/78")}
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {character.bio}
-            </p>
-          </div>
-        </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-black/30 via-black/12 to-transparent" />
 
-        <UserVideo mirror>
-          {(user) =>
-            user.hasVideo && user.trackRef && isTrackReference(user.trackRef) ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
               <div
                 className={cn(
-                  "absolute bottom-5 right-5 h-28 w-20 overflow-hidden rounded-[20px] border shadow-2xl backdrop-blur-sm",
-                  isLight ? "border-white/80 bg-white/70 shadow-slate-300/50" : "border-white/15 bg-black/60 shadow-black/30"
+                  "pointer-events-auto flex flex-wrap justify-center gap-3 rounded-[28px] px-4 py-3 backdrop-blur-2xl sm:px-5",
+                  isLight ? "bg-white/76 shadow-xl shadow-slate-200/85" : "bg-black/34 shadow-2xl shadow-black/35"
                 )}
               >
-                <VideoTrack trackRef={user.trackRef} className="h-full w-full object-cover" />
+                <ControlBar showScreenShare>
+                  {(controls) => (
+                    <>
+                      <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-4 w-4" />} theme={theme} />
+                      <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-4 w-4" />} theme={theme} />
+                      <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-4 w-4" />} theme={theme} />
+                      <button
+                        onClick={() => void controls.endCall()}
+                        className={cn(
+                          "inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium text-white transition-colors",
+                          theme === "light" ? "bg-rose-500 hover:bg-rose-600" : "bg-red-500/85 hover:bg-red-500"
+                        )}
+                      >
+                        <PhoneOff className="h-4 w-4" />
+                        End live call
+                      </button>
+                    </>
+                  )}
+                </ControlBar>
               </div>
-            ) : null
-          }
-        </UserVideo>
-      </div>
-
-      <div className="shrink-0">
-        <ControlBar showScreenShare>
-          {(controls) => (
-            <div
-              className={cn(
-                "flex flex-wrap justify-center gap-3 rounded-[28px] border px-4 py-3 backdrop-blur-xl sm:px-5",
-                isLight ? "border-white/75 bg-white/80 shadow-lg shadow-slate-200/70" : "border-white/10 bg-white/5 shadow-xl shadow-black/20"
-              )}
-            >
-              <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-4 w-4" />} theme={theme} />
-              <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-4 w-4" />} theme={theme} />
-              <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-4 w-4" />} theme={theme} />
-              <button
-                onClick={() => void controls.endCall()}
-                className={cn(
-                  "inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium text-white transition-colors",
-                  theme === "light" ? "bg-rose-500 hover:bg-rose-600" : "bg-red-500/85 hover:bg-red-500"
-                )}
-              >
-                <PhoneOff className="h-4 w-4" />
-                End live call
-              </button>
             </div>
-          )}
-        </ControlBar>
+
+            <UserVideo mirror>
+              {(user) =>
+                user.hasVideo && user.trackRef && isTrackReference(user.trackRef) ? (
+                  <div
+                    className={cn(
+                      "absolute bottom-24 right-5 h-28 w-20 overflow-hidden rounded-[20px] border shadow-2xl backdrop-blur-sm sm:bottom-28 sm:right-6",
+                      isLight ? "border-white/80 bg-white/70 shadow-slate-300/50" : "border-white/15 bg-black/60 shadow-black/30"
+                    )}
+                  >
+                    <VideoTrack trackRef={user.trackRef} className="h-full w-full object-cover" />
+                  </div>
+                ) : null
+              }
+            </UserVideo>
+          </>
+        )}
       </div>
     </div>
   );

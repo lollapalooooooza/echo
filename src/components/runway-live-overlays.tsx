@@ -306,7 +306,7 @@ export function RunwayLiveOverlays({
       )}
 
       {(captionText || articleLoading) && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
+        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4 sm:bottom-28">
           <div className="w-full max-w-3xl">
             {articleLoading && (
               <div className="mb-3 flex justify-center">
