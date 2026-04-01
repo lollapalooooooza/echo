@@ -295,12 +295,15 @@ function RunwaySessionSurface({
 
   const useDarkText = overlayTone === "dark";
   const overlayTextClass = useDarkText ? "text-slate-950" : "text-white";
-  const topGradientClass = useDarkText
-    ? "bg-gradient-to-b from-white/42 via-white/10 to-transparent"
-    : "bg-gradient-to-b from-black/28 via-black/8 to-transparent";
   const badgeClass = useDarkText
     ? "bg-white/70 text-slate-950"
     : "bg-black/32 text-white";
+  const titleGlassClass = useDarkText
+    ? "bg-white/52 text-slate-950 ring-1 ring-white/68"
+    : "bg-black/24 text-white ring-1 ring-white/12";
+  const badgeGlassClass = useDarkText
+    ? "bg-white/66 text-slate-950 ring-1 ring-white/68"
+    : "bg-black/30 text-white ring-1 ring-white/12";
   const controlIdleClass = useDarkText
     ? "bg-white/58 text-slate-950 hover:bg-white/72"
     : "bg-black/26 text-white hover:bg-black/36";
@@ -360,33 +363,34 @@ function RunwaySessionSurface({
 
         {videoReady && (
           <>
-            <div
-              className={cn(
-                "pointer-events-none absolute inset-x-0 top-0 z-10 h-28 backdrop-blur-[14px]",
-                topGradientClass
-              )}
-            />
-
             <div className="pointer-events-none absolute left-5 top-5 right-24 z-20 sm:left-6 sm:top-6">
-              <h2
+              <div
                 className={cn(
-                  "max-w-[18rem] text-[clamp(1.2rem,2vw,1.75rem)] leading-[0.96] tracking-[-0.03em]",
-                  overlayTextClass,
-                  useDarkText
-                    ? "drop-shadow-[0_1px_8px_rgba(255,255,255,0.16)]"
-                    : "drop-shadow-[0_1px_10px_rgba(0,0,0,0.22)]"
+                  "inline-flex max-w-[18rem] rounded-[18px] px-3.5 py-2 backdrop-blur-[16px]",
+                  titleGlassClass
                 )}
-                style={{ fontFamily: "var(--font-display)" }}
               >
-                {character.name}
-              </h2>
+                <h2
+                  className={cn(
+                    "text-[clamp(1.2rem,2vw,1.75rem)] leading-[0.96] tracking-[-0.03em]",
+                    overlayTextClass,
+                    useDarkText
+                      ? "drop-shadow-[0_1px_8px_rgba(255,255,255,0.16)]"
+                      : "drop-shadow-[0_1px_10px_rgba(0,0,0,0.22)]"
+                  )}
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {character.name}
+                </h2>
+              </div>
             </div>
 
             <div className="pointer-events-none absolute right-5 top-5 z-20 sm:right-6 sm:top-6">
               <div
                 className={cn(
-                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] shadow-[0_4px_10px_rgba(15,23,42,0.08)] backdrop-blur-xl",
-                  badgeClass
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] shadow-[0_4px_10px_rgba(15,23,42,0.08)] backdrop-blur-[16px]",
+                  badgeClass,
+                  badgeGlassClass
                 )}
               >
                 <span
