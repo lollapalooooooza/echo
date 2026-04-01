@@ -470,6 +470,8 @@ export function RunwayLiveRoom({
   character: any;
   onUseFallback?: () => void;
 }) {
+  const liveStageShellClass =
+    "h-full min-h-0 [&>.lk-room-container]:flex [&>.lk-room-container]:h-full [&>.lk-room-container]:min-h-0 [&>.lk-room-container]:flex-col";
   const [attempt, setAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>({ status: "connecting" });
   const [roomTheme, setRoomTheme] = useState<RoomTheme>("light");
@@ -599,20 +601,22 @@ export function RunwayLiveRoom({
       <div className="relative z-10 mx-auto flex h-full max-w-7xl flex-col px-4 pb-4 pt-[4.75rem] sm:px-6 sm:pb-5 sm:pt-[5rem]">
         <div className="min-w-0 flex-1">
           {connection.status === "ready" ? (
-            <AvatarSession
-              key={`${character.id}:${attempt}`}
-              credentials={connection.credentials}
-              audio
-              video={false}
-              onEnd={() => setConnection({ status: "ended" })}
-              onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
-            >
-              <RunwaySessionSurface
-                character={character}
-                theme={roomTheme}
-                clientEventsEnabled={connection.clientEventsEnabled}
-              />
-            </AvatarSession>
+            <div className={liveStageShellClass}>
+              <AvatarSession
+                key={`${character.id}:${attempt}`}
+                credentials={connection.credentials}
+                audio
+                video={false}
+                onEnd={() => setConnection({ status: "ended" })}
+                onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
+              >
+                <RunwaySessionSurface
+                  character={character}
+                  theme={roomTheme}
+                  clientEventsEnabled={connection.clientEventsEnabled}
+                />
+              </AvatarSession>
+            </div>
           ) : connection.status === "connecting" ? (
             <div className="h-full min-h-0">
               <CharacterPlaceholder
