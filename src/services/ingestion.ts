@@ -7,6 +7,30 @@ import { discoverPages, scrapeUrl } from "@/services/scraping";
 import { summarizeKnowledgeSource } from "@/services/content-intelligence";
 import { storeEmbeddings } from "./embeddings";
 
+const MAX_CONCURRENT_CHUNK_STORES = 1;
+const WEBSITE_CRAWL_CONCURRENCY = 2;
+
+let activeChunkStores = 0;
+const chunkStoreWaiters: Array<() => void> = [];
+
+async function withChunkStoreSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (activeChunkStores >= MAX_CONCURRENT_CHUNK_STORES) {
+    await new Promise<void>((resolve) => {
+      chunkStoreWaiters.push(resolve);
+    });
+  }
+
+  activeChunkStores += 1;
+
+  try {
+    return await task();
+  } finally {
+    activeChunkStores = Math.max(0, activeChunkStores - 1);
+    const next = chunkStoreWaiters.shift();
+    if (next) next();
+  }
+}
+
 // ── Text Chunking ────────────────────────────────────────────
 
 export function chunkText(text: string, maxChars = 1500, overlap = 200) {
@@ -80,22 +104,24 @@ async function processAndStoreChunks(
   sourceId: string,
   text: string
 ): Promise<number> {
-  const textChunks = chunkText(text);
-  const records = await db.contentChunk.createManyAndReturn({
-    data: textChunks.map((tc) => ({
-      sourceId,
-      chunkIndex: tc.index,
-      content: tc.content,
-      heading: tc.heading,
-      tokenCount: Math.ceil(tc.content.length / 4),
-    })),
-    select: {
-      id: true,
-      content: true,
-    },
+  return withChunkStoreSlot(async () => {
+    const textChunks = chunkText(text);
+    const records = await db.contentChunk.createManyAndReturn({
+      data: textChunks.map((tc) => ({
+        sourceId,
+        chunkIndex: tc.index,
+        content: tc.content,
+        heading: tc.heading,
+        tokenCount: Math.ceil(tc.content.length / 4),
+      })),
+      select: {
+        id: true,
+        content: true,
+      },
+    });
+    await storeEmbeddings(records.map((c) => ({ id: c.id, content: c.content })));
+    return records.length;
   });
-  await storeEmbeddings(records.map((c) => ({ id: c.id, content: c.content })));
-  return records.length;
 }
 
 function stripWww(hostname: string) {
@@ -156,8 +182,6 @@ export type WebsiteCrawlProgressEvent =
       indexed: number;
       errors: number;
     };
-
-const WEBSITE_CRAWL_CONCURRENCY = 4;
 
 class AsyncEventQueue<T> implements AsyncIterable<T> {
   private items: T[] = [];
