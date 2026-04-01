@@ -59,16 +59,16 @@ const RUNWAY_TO_ELEVENLABS_PRESET: Record<RunwayLiveVoicePreset, string> = {
 };
 
 const RUNWAY_PRESET_DESCRIPTIONS: Record<RunwayLiveVoicePreset, string> = {
-  adrian: "Runway live preset - grounded and professional",
-  clara: "Runway live preset - warm and conversational",
-  drew: "Runway live preset - deep and authoritative",
-  emma: "Runway live preset - bright and energetic",
-  maya: "Runway live preset - calm and thoughtful",
-  nathan: "Runway live preset - casual and friendly",
-  luna: "Runway live preset - soft and creative",
-  roman: "Runway live preset - bold and witty",
-  petra: "Runway live preset - precise and academic",
-  violet: "Runway live preset - playful and lively",
+  adrian: "grounded, professional, steady",
+  clara: "warm, conversational, welcoming",
+  drew: "deep, authoritative, composed",
+  emma: "bright, energetic, upbeat",
+  maya: "calm, thoughtful, gentle",
+  nathan: "casual, friendly, relaxed",
+  luna: "soft, creative, dreamy",
+  roman: "bold, witty, fast-paced",
+  petra: "precise, academic, articulate",
+  violet: "playful, lively, expressive",
 };
 
 export const PRESET_VOICES = RUNWAY_LIVE_VOICE_PRESETS.map((voice) => ({
@@ -76,6 +76,13 @@ export const PRESET_VOICES = RUNWAY_LIVE_VOICE_PRESETS.map((voice) => ({
   name: voice.name,
   desc: RUNWAY_PRESET_DESCRIPTIONS[voice.id],
 }));
+
+export type DesignedVoicePreview = {
+  generatedVoiceId: string;
+  audioBase64: string;
+  mediaType: string;
+  durationSecs?: number | null;
+};
 
 function resolveSynthVoiceId(voiceId: string) {
   return RUNWAY_TO_ELEVENLABS_PRESET[voiceId as RunwayLiveVoicePreset] || voiceId;
@@ -287,6 +294,95 @@ export async function deleteClonedVoice(elevenLabsVoiceId: string): Promise<void
 
   const message = await readElevenLabsError(res);
   throw new Error(`ElevenLabs delete failed: ${message}`);
+}
+
+export async function designVoicePreviews(description: string): Promise<{
+  previewText: string;
+  previews: DesignedVoicePreview[];
+}> {
+  if (!env.ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not set");
+
+  const trimmedDescription = description.trim();
+  if (trimmedDescription.length < 20) {
+    throw new Error("Voice description must be at least 20 characters.");
+  }
+
+  const res = await fetch(`${BASE}/text-to-voice/design`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      voice_description: trimmedDescription,
+      auto_generate_text: true,
+      should_enhance: true,
+    }),
+  });
+
+  if (!res.ok) {
+    const message = await readElevenLabsError(res);
+    throw new Error(`ElevenLabs voice design failed: ${message}`);
+  }
+
+  const data = await res.json();
+  const previews = Array.isArray(data?.previews)
+    ? data.previews
+        .map((preview: any) => ({
+          generatedVoiceId: String(preview.generated_voice_id || ""),
+          audioBase64: String(preview.audio_base_64 || ""),
+          mediaType: String(preview.media_type || "audio/mpeg"),
+          durationSecs:
+            typeof preview.duration_secs === "number" ? preview.duration_secs : null,
+        }))
+        .filter((preview: DesignedVoicePreview) => preview.generatedVoiceId && preview.audioBase64)
+    : [];
+
+  if (previews.length === 0) {
+    throw new Error("ElevenLabs did not return any voice previews.");
+  }
+
+  return {
+    previewText: String(data?.text || ""),
+    previews,
+  };
+}
+
+export async function createDesignedVoice(
+  name: string,
+  description: string,
+  generatedVoiceId: string
+): Promise<string> {
+  if (!env.ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not set");
+
+  const voiceName = name.trim();
+  const voiceDescription = description.trim();
+  const previewId = generatedVoiceId.trim();
+
+  if (!voiceName) throw new Error("Voice name is required.");
+  if (voiceDescription.length < 20) {
+    throw new Error("Voice description must be at least 20 characters.");
+  }
+  if (!previewId) throw new Error("generatedVoiceId is required.");
+
+  const res = await fetch(`${BASE}/text-to-voice`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      voice_name: voiceName,
+      voice_description: voiceDescription,
+      generated_voice_id: previewId,
+    }),
+  });
+
+  if (!res.ok) {
+    const message = await readElevenLabsError(res);
+    throw new Error(`ElevenLabs voice creation failed: ${message}`);
+  }
+
+  const data = await res.json();
+  if (!data?.voice_id) {
+    throw new Error("ElevenLabs did not return a voice id.");
+  }
+
+  return String(data.voice_id);
 }
 
 /**

@@ -9,7 +9,15 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const userVoices = await db.voice.findMany({
-    where: { userId: (session.user as any).id },
+    where: {
+      userId: (session.user as any).id,
+      isDefault: false,
+      NOT: {
+        id: {
+          startsWith: "preset_",
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
     include: {
       _count: { select: { characters: true } },

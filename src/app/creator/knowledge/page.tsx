@@ -108,6 +108,8 @@ export default function KnowledgePage() {
   const [dragOver, setDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ name: string; status: string }[]>([]);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [savingRename, setSavingRename] = useState(false);
   const [crawlState, setCrawlState] = useState<CrawlState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -117,6 +119,14 @@ export default function KnowledgePage() {
       .then((d) => setSources(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setRenameValue("");
+      return;
+    }
+    setRenameValue(selectedItem.title || "");
+  }, [selectedItem]);
 
   const ingest = async (body: any) => {
     if (body.type === "website") {
@@ -353,6 +363,66 @@ export default function KnowledgePage() {
     await fetch("/api/knowledge/resync", { method: "POST" });
     await load();
     setSyncing(false);
+  };
+
+  const saveRename = async () => {
+    if (!selectedItem) return;
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      alert("Name cannot be empty.");
+      return;
+    }
+
+    setSavingRename(true);
+    try {
+      const payload =
+        selectedItem.kind === "domain"
+          ? { sourceIds: selectedItem.sourceIds, folderName: nextName }
+          : { sourceId: selectedItem.sourceIds[0], title: nextName };
+
+      const response = await fetch("/api/knowledge/sources", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await readResponse(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to rename");
+      }
+
+      setSources((current) =>
+        current.map((source) =>
+          selectedItem.sourceIds.includes(source.id)
+            ? {
+                ...source,
+                ...(selectedItem.kind === "domain"
+                  ? { folderName: nextName }
+                  : { title: nextName }),
+              }
+            : source
+        )
+      );
+
+      setSelectedItem((current: any) =>
+        current
+          ? {
+              ...current,
+              title: nextName,
+              members: current.members.map((member: any) =>
+                selectedItem.kind === "domain"
+                  ? { ...member, folderName: nextName }
+                  : member.id === current.sourceIds[0]
+                    ? { ...member, title: nextName }
+                    : member
+              ),
+            }
+          : current
+      );
+    } catch (error: any) {
+      alert(error.message || "Failed to rename");
+    } finally {
+      setSavingRename(false);
+    }
   };
 
   const handleDrop = (event: React.DragEvent) => {
@@ -632,6 +702,28 @@ export default function KnowledgePage() {
                     </a>
                   </div>
                 )}
+
+                <div>
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                    {selectedItem.kind === "domain" ? "Folder Name" : "File Name"}
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      value={renameValue}
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      placeholder={selectedItem.kind === "domain" ? "Rename this folder" : "Rename this file"}
+                      className="h-10 flex-1 rounded-xl border border-border px-3 text-sm outline-none transition-colors focus:border-foreground"
+                    />
+                    <button
+                      onClick={() => void saveRename()}
+                      disabled={savingRename || !renameValue.trim() || renameValue.trim() === selectedItem.title}
+                      className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-foreground px-4 text-[12px] font-medium text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+                    >
+                      {savingRename ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      Save
+                    </button>
+                  </div>
+                </div>
 
                 <div>
                   <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">Summary</p>

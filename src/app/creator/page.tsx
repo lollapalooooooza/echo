@@ -13,7 +13,6 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
-import { BrandMark } from "@/components/brand-mark";
 
 export default function CreatorDashboard() {
   const [sources, setSources] = useState<any[]>([]);
@@ -49,7 +48,6 @@ export default function CreatorDashboard() {
       <section className="rounded-[32px] border border-border/60 bg-[linear-gradient(135deg,rgba(15,23,42,0.97),rgba(30,41,59,0.9))] p-7 text-white shadow-sm">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <BrandMark size="sm" className="text-white" nameClassName="text-white" />
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-200/75">
               <Sparkles className="h-3.5 w-3.5" />
               Creator Dashboard
@@ -109,8 +107,9 @@ export default function CreatorDashboard() {
               </Link>
             </div>
           ) : (
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              {characters.slice(0, 4).map((character: any) => (
+            <div className="max-h-[52rem] overflow-y-auto p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                {characters.map((character: any) => (
                 <Link
                   key={character.id}
                   href={`/creator/character/${character.id}`}
@@ -147,7 +146,8 @@ export default function CreatorDashboard() {
                     </div>
                   </div>
                 </Link>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </section>

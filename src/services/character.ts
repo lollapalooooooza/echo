@@ -95,11 +95,12 @@ async function resolveVoiceSelection(userId: string, voiceId?: string, voiceName
       name: voiceName || preset.name,
       elevenLabsVoiceId: selectedVoiceId,
       isCloned: false,
-      isDefault: false,
+      isDefault: true,
     },
     update: {
       name: voiceName || preset.name,
       elevenLabsVoiceId: selectedVoiceId,
+      isDefault: true,
     },
   });
 

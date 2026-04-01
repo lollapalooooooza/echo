@@ -1,6 +1,7 @@
 type KnowledgeLike = {
   id: string;
   title: string;
+  folderName?: string | null;
   type: string;
   sourceUrl?: string | null;
   fileName?: string | null;
@@ -206,6 +207,14 @@ function buildDomainSummary<T extends KnowledgeLike>(domainLabel: string, member
   return `${coverage}.`;
 }
 
+function resolveFolderName<T extends KnowledgeLike>(members: T[]) {
+  const folderNames = members
+    .map((member) => cleanText(member.folderName, 80))
+    .filter(Boolean);
+
+  return folderNames[0] || null;
+}
+
 function buildSingleItem<T extends KnowledgeLike>(source: T): KnowledgeDisplayItem<T> {
   return {
     id: source.id,
@@ -264,11 +273,12 @@ export function groupKnowledgeSources<T extends KnowledgeLike>(sources: T[]) {
     const chunkCount = members.reduce((total, member) => total + (member.chunkCount || 0), 0);
     const sourceIds = members.map((member) => member.id);
     const primaryTopic = Array.from(new Set(members.map((member) => member.topic).filter(Boolean)))[0] || null;
+    const folderName = resolveFolderName(members);
 
     items.push({
       id: `domain:${domainLabel}`,
       kind: "domain",
-      title: `${domainLabel}/`,
+      title: folderName || `${domainLabel}/`,
       summary: buildDomainSummary(domainLabel, members),
       sourceUrl: `https://${domainLabel}/`,
       topic: primaryTopic,
@@ -282,6 +292,7 @@ export function groupKnowledgeSources<T extends KnowledgeLike>(sources: T[]) {
       webSourceCount: members.filter((member) => member.type === "WEBSITE" || member.type === "URL").length,
       searchText: [
         domainLabel,
+        folderName,
         ...members.map((member) => [member.title, member.sourceUrl, member.summary, member.topic].filter(Boolean).join(" ")),
       ]
         .join(" ")

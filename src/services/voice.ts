@@ -9,6 +9,8 @@ import {
   generateSpeech,
   generateSpeechStream,
   cloneVoice as cloneVoiceNew,
+  createDesignedVoice as createDesignedVoiceNew,
+  designVoicePreviews as designVoicePreviewsNew,
   deleteClonedVoice as deleteClonedVoiceNew,
   listVoices as listVoicesNew,
   PRESET_VOICES,
@@ -38,6 +40,18 @@ export async function cloneVoice(
 
 export async function deleteClonedVoice(elevenLabsVoiceId: string): Promise<void> {
   return deleteClonedVoiceNew(elevenLabsVoiceId);
+}
+
+export async function designVoicePreviews(description: string) {
+  return designVoicePreviewsNew(description);
+}
+
+export async function createDesignedVoice(
+  name: string,
+  description: string,
+  generatedVoiceId: string
+) {
+  return createDesignedVoiceNew(name, description, generatedVoiceId);
 }
 
 export async function listVoices() {

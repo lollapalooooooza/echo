@@ -22,6 +22,7 @@ type VoiceLibraryResponse = {
     id: string;
     name: string;
     elevenLabsVoiceId: string;
+    isCloned: boolean;
     createdAt: string;
     _count?: { characters?: number };
     characters?: { id: string; name: string }[];
@@ -302,7 +303,7 @@ export default function VoiceLibraryPage() {
                       <div>
                         <h3 className="text-[15px] font-semibold">{voice.name}</h3>
                         <p className="mt-1 text-[12px] text-muted-foreground">
-                          Added {new Date(voice.createdAt).toLocaleDateString()}
+                          {voice.isCloned ? "Audio clone" : "Designed from description"} · Added {new Date(voice.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                     </div>

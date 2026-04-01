@@ -23,7 +23,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { voiceId: st
     },
   });
 
-  if (!voice || !voice.isCloned) {
+  if (!voice || voice.isDefault) {
     return NextResponse.json({ error: "Voice not found" }, { status: 404 });
   }
 

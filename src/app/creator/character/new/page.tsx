@@ -46,6 +46,18 @@ export default function NewCharacterPage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarDrag, setAvatarDrag] = useState(false);
 
+  const loadVoices = async () => {
+    try {
+      const response = await fetch("/api/voice/list", { cache: "no-store" });
+      const data = await readResponse(response);
+      if (response.ok) {
+        setVoices(data);
+      }
+    } catch {
+      /* keep existing voice options */
+    }
+  };
+
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true);
     try {
@@ -72,7 +84,7 @@ export default function NewCharacterPage() {
   };
 
   useEffect(() => {
-    fetch("/api/voice/list").then((r) => r.json()).then(setVoices).catch(() => {});
+    void loadVoices();
     fetch("/api/knowledge/sources")
       .then((r) => r.json())
       .then((data) => {
@@ -241,7 +253,7 @@ export default function NewCharacterPage() {
         </Section>
 
         {/* Voice */}
-        <Section title="Voice (ElevenLabs)">
+        <Section title="Voice">
           <VoiceSelectionPanel
             voices={voices}
             selectedVoiceId={form.voiceId}
@@ -254,6 +266,7 @@ export default function NewCharacterPage() {
               set("voiceName", "");
             }}
             previewText={form.greeting || "Hello! I'm your AI knowledge character."}
+            onLibraryRefresh={loadVoices}
           />
         </Section>
 

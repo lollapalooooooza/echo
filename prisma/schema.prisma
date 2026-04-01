@@ -102,6 +102,7 @@ model KnowledgeSource {
   userId           String
   type             SourceType
   title            String
+  folderName       String?
   sourceUrl        String?
   fileName         String?
   rawContent       String?                    @db.Text

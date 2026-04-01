@@ -58,6 +58,15 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarDrag, setAvatarDrag] = useState(false);
 
+  const loadVoices = async () => {
+    const voicesRes = await fetch("/api/voice/list", { cache: "no-store" });
+    const voicesData = await readResponse(voicesRes);
+    if (!voicesRes.ok) {
+      throw new Error(voicesData.error || "Failed to load voices");
+    }
+    setVoices(voicesData);
+  };
+
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true);
     try {
@@ -115,7 +124,10 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
         setChar({
           ...current,
-          voiceId: current.voice?.isCloned ? current.voice.id : current.voice?.elevenLabsVoiceId || "",
+          voiceId:
+            current.voice && !current.voice.isDefault && !String(current.voice.id || "").startsWith("preset_")
+              ? current.voice.id
+              : current.voice?.elevenLabsVoiceId || "",
           voiceName: current.voice?.name || "",
           knowledgeSourceIds: current.knowledgeSources?.map((link: any) => link.source.id) || [],
         });
@@ -409,6 +421,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
             }
             onClear={() => setChar((prev: any) => ({ ...prev, voiceId: "", voiceName: "" }))}
             previewText={char.greeting || `Hello, I'm ${char.name}.`}
+            onLibraryRefresh={loadVoices}
           />
         </div>
 
