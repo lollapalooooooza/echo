@@ -18,7 +18,7 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
-import { isTrackReference } from "@livekit/components-react";
+import { isTrackReference, useRoomContext } from "@livekit/components-react";
 import {
   AvatarSession,
   AvatarVideo,
@@ -29,6 +29,7 @@ import {
   useLocalMedia,
   useAvatarSession,
 } from "@runwayml/avatars-react";
+import { RoomEvent } from "livekit-client";
 
 import { cn } from "@/lib/utils";
 import { RunwayLiveOverlays } from "@/components/runway-live-overlays";
@@ -178,12 +179,43 @@ function RunwaySessionSurface({
 }) {
   const session = useAvatarSession();
   const media = useLocalMedia();
+  const room = useRoomContext();
   const isLight = theme === "light";
   const [videoReady, setVideoReady] = useState(false);
   const [overlayTone, setOverlayTone] = useState<"light" | "dark">(isLight ? "dark" : "light");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
   const avatarStageRef = useRef<HTMLDivElement | null>(null);
   const sessionStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const syncAudioPlayback = () => {
+      setCanPlaybackAudio(room.canPlaybackAudio);
+    };
+
+    syncAudioPlayback();
+    room.on(RoomEvent.AudioPlaybackStatusChanged, syncAudioPlayback);
+    return () => {
+      room.off(RoomEvent.AudioPlaybackStatusChanged, syncAudioPlayback);
+    };
+  }, [room]);
+
+  useEffect(() => {
+    if (session.state !== "active") return;
+    if (media.isMicEnabled || media.micError || !media.hasMic) return;
+
+    const timeoutId = window.setTimeout(() => {
+      void media.retryMic();
+    }, 450);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    media.hasMic,
+    media.isMicEnabled,
+    media.micError,
+    media.retryMic,
+    session.state,
+  ]);
 
   useEffect(() => {
     if (!videoReady) {
@@ -284,9 +316,25 @@ function RunwaySessionSurface({
   const controlShareClass = useDarkText
     ? "bg-sky-500/92 text-white shadow-[0_6px_18px_rgba(14,165,233,0.32)] hover:bg-sky-500"
     : "bg-sky-500/82 text-white shadow-[0_6px_18px_rgba(14,165,233,0.24)] hover:bg-sky-500/90";
+  const liveNeedsWake = session.state === "active" && (!canPlaybackAudio || (!!media.hasMic && (!media.isMicEnabled || !!media.micError)));
+
+  async function warmLiveSession() {
+    if (!room.canPlaybackAudio) {
+      try {
+        await room.startAudio();
+        setCanPlaybackAudio(true);
+      } catch {
+        // The overlay button remains visible if playback is still blocked.
+      }
+    }
+
+    if (media.hasMic && (!media.isMicEnabled || media.micError)) {
+      await media.retryMic().catch(() => undefined);
+    }
+  }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" onPointerDownCapture={() => void warmLiveSession()}>
       <div
         className={cn(
           "relative flex min-h-0 flex-1 overflow-hidden rounded-[32px]",
@@ -359,6 +407,28 @@ function RunwaySessionSurface({
               theme={theme}
               clientEventsEnabled={clientEventsEnabled}
             />
+
+            {liveNeedsWake && (
+              <div className="absolute inset-x-0 top-20 z-20 flex justify-center px-4 sm:top-24">
+                <button
+                  type="button"
+                  onClick={() => void warmLiveSession()}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium backdrop-blur-xl transition-colors",
+                    useDarkText
+                      ? "bg-white/76 text-slate-900 shadow-[0_6px_18px_rgba(15,23,42,0.08)] hover:bg-white"
+                      : "bg-black/42 text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] hover:bg-black/54"
+                  )}
+                >
+                  <span className="live-dot" style={{ width: 7, height: 7 }} />
+                  {!canPlaybackAudio
+                    ? "Tap once to hear the live character"
+                    : media.micError
+                    ? "Tap to reconnect your mic"
+                    : "Tap once to enable your mic"}
+                </button>
+              </div>
+            )}
 
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/16 via-black/4 to-transparent" />
 
