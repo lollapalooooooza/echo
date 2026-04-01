@@ -9,18 +9,19 @@ import {
   Loader2,
   MessageCircleMore,
   Mic,
+  MicOff,
   MonitorUp,
   MoonStar,
   PhoneOff,
   RefreshCw,
   SunMedium,
   Video,
+  VideoOff,
 } from "lucide-react";
 import { isTrackReference } from "@livekit/components-react";
 import {
   AvatarSession,
   AvatarVideo,
-  ControlBar,
   UserVideo,
   VideoTrack,
   type SessionCredentials,
@@ -127,49 +128,6 @@ function CharacterPlaceholder({
   );
 }
 
-function LiveMicBanner({ theme }: { theme: RoomTheme }) {
-  const { hasMic, isMicEnabled, micError, retryMic } = useLocalMedia();
-  const isLight = theme === "light";
-
-  if (!micError && hasMic && isMicEnabled) {
-    return null;
-  }
-
-  const message = micError
-    ? "Microphone access failed. Close other apps using your mic or re-allow browser permission, then retry."
-    : !hasMic
-      ? "No microphone was detected for this session."
-      : "Your microphone is off, so the live character cannot hear you yet.";
-
-  return (
-    <div
-      className={cn(
-        "pointer-events-auto absolute inset-x-4 top-20 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border px-4 py-3 text-sm shadow-lg backdrop-blur-2xl sm:left-auto sm:right-4 sm:max-w-[28rem]",
-        isLight
-          ? "border-amber-200/90 bg-white/88 text-amber-900 shadow-amber-100"
-          : "border-amber-300/20 bg-black/58 text-amber-50 shadow-black/40"
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        <p className="max-w-2xl text-[13px] leading-6">{message}</p>
-      </div>
-      {micError && (
-        <button
-          type="button"
-          onClick={() => void retryMic()}
-          className={cn(
-            "inline-flex h-9 items-center rounded-full px-4 text-xs font-medium transition-colors",
-            isLight ? "bg-white text-amber-900 hover:bg-amber-100" : "bg-white/10 text-white hover:bg-white/15"
-          )}
-        >
-          Retry mic
-        </button>
-      )}
-    </div>
-  );
-}
-
 function RunwayAvatarStage({
   avatar,
   character,
@@ -211,6 +169,7 @@ function RunwaySessionSurface({
   clientEventsEnabled: boolean;
 }) {
   const session = useAvatarSession();
+  const media = useLocalMedia();
   const isLight = theme === "light";
   const [videoReady, setVideoReady] = useState(false);
   const [overlayTone, setOverlayTone] = useState<"light" | "dark">(isLight ? "dark" : "light");
@@ -302,9 +261,21 @@ function RunwaySessionSurface({
   const badgeClass = useDarkText
     ? "bg-white/70 text-slate-950"
     : "bg-black/32 text-white";
-  const iconButtonBaseClass = useDarkText
+  const controlIdleClass = useDarkText
     ? "bg-white/58 text-slate-950 hover:bg-white/72"
     : "bg-black/26 text-white hover:bg-black/36";
+  const controlActiveClass = useDarkText
+    ? "bg-slate-950/86 text-white hover:bg-slate-950"
+    : "bg-white/18 text-white hover:bg-white/24";
+  const controlInactiveClass = useDarkText
+    ? "bg-white/82 text-slate-500 ring-1 ring-slate-300/72 hover:bg-white"
+    : "bg-black/34 text-white/55 ring-1 ring-white/12 hover:bg-black/42";
+  const controlAlertClass = useDarkText
+    ? "bg-amber-50/96 text-amber-700 ring-1 ring-amber-300/85 hover:bg-amber-100"
+    : "bg-amber-500/20 text-amber-100 ring-1 ring-amber-300/30 hover:bg-amber-500/28";
+  const controlShareClass = useDarkText
+    ? "bg-sky-500/92 text-white shadow-[0_6px_18px_rgba(14,165,233,0.32)] hover:bg-sky-500"
+    : "bg-sky-500/82 text-white shadow-[0_6px_18px_rgba(14,165,233,0.24)] hover:bg-sky-500/90";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -375,8 +346,6 @@ function RunwaySessionSurface({
               </div>
             </div>
 
-            <LiveMicBanner theme={theme} />
-
             <RunwayLiveOverlays
               character={character}
               theme={theme}
@@ -387,26 +356,77 @@ function RunwaySessionSurface({
 
             <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
               <div className="pointer-events-auto flex flex-wrap justify-center gap-3 sm:gap-4">
-                <ControlBar showScreenShare>
-                  {(controls) => (
-                    <>
-                      <LiveControlButton active={controls.isMicEnabled} onClick={controls.toggleMic} label={controls.isMicEnabled ? "Mic on" : "Mic off"} icon={<Mic className="h-5 w-5" />} overlayClass={iconButtonBaseClass} activeClass={useDarkText ? "bg-slate-950/86 text-white" : "bg-white/18 text-white"} />
-                      <LiveControlButton active={controls.isCameraEnabled} onClick={controls.toggleCamera} label={controls.isCameraEnabled ? "Camera on" : "Camera off"} icon={<Camera className="h-5 w-5" />} overlayClass={iconButtonBaseClass} activeClass={useDarkText ? "bg-slate-950/86 text-white" : "bg-white/18 text-white"} />
-                      <LiveControlButton active={controls.isScreenShareEnabled} onClick={controls.toggleScreenShare} label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"} icon={<MonitorUp className="h-5 w-5" />} overlayClass={iconButtonBaseClass} activeClass={useDarkText ? "bg-slate-950/86 text-white" : "bg-white/18 text-white"} />
-                      <button
-                        onClick={() => void controls.endCall()}
-                        aria-label="End live call"
-                        title="End live call"
-                        className={cn(
-                          "inline-flex h-14 w-14 items-center justify-center rounded-full text-white transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)]",
-                          theme === "light" ? "bg-[#ff5a36]/96 hover:bg-[#ff4b22]" : "bg-[#ff5a36]/92 hover:bg-[#ff4b22]"
-                        )}
-                      >
-                        <PhoneOff className="h-5 w-5" />
-                      </button>
-                    </>
+                <LiveControlButton
+                  onClick={
+                    media.micError
+                      ? () => void media.retryMic()
+                      : media.hasMic
+                        ? media.toggleMic
+                        : undefined
+                  }
+                  label={
+                    media.micError
+                      ? "Retry microphone"
+                      : !media.hasMic
+                        ? "No microphone detected"
+                        : media.isMicEnabled
+                          ? "Turn microphone off"
+                          : "Turn microphone on"
+                  }
+                  icon={media.micError || !media.hasMic || !media.isMicEnabled ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                  variantClass={
+                    media.micError || !media.hasMic
+                      ? controlAlertClass
+                      : media.isMicEnabled
+                        ? controlActiveClass
+                        : controlInactiveClass
+                  }
+                  disabled={!media.hasMic && !media.micError}
+                />
+                <LiveControlButton
+                  onClick={
+                    media.cameraError
+                      ? () => void media.retryCamera()
+                      : media.hasCamera
+                        ? media.toggleCamera
+                        : undefined
+                  }
+                  label={
+                    media.cameraError
+                      ? "Retry camera"
+                      : !media.hasCamera
+                        ? "No camera detected"
+                        : media.isCameraEnabled
+                          ? "Turn camera off"
+                          : "Turn camera on"
+                  }
+                  icon={media.cameraError || !media.hasCamera || !media.isCameraEnabled ? <VideoOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
+                  variantClass={
+                    media.cameraError || !media.hasCamera
+                      ? controlAlertClass
+                      : media.isCameraEnabled
+                        ? controlActiveClass
+                        : controlInactiveClass
+                  }
+                  disabled={!media.hasCamera && !media.cameraError}
+                />
+                <LiveControlButton
+                  onClick={media.toggleScreenShare}
+                  label={media.isScreenShareEnabled ? "Stop sharing screen" : "Share screen"}
+                  icon={<MonitorUp className="h-5 w-5" />}
+                  variantClass={media.isScreenShareEnabled ? controlShareClass : controlIdleClass}
+                />
+                <button
+                  onClick={() => void session.end()}
+                  aria-label="End live call"
+                  title="End live call"
+                  className={cn(
+                    "inline-flex h-14 w-14 items-center justify-center rounded-full text-white transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)]",
+                    theme === "light" ? "bg-[#ff5a36]/96 hover:bg-[#ff4b22]" : "bg-[#ff5a36]/92 hover:bg-[#ff4b22]"
                   )}
-                </ControlBar>
+                >
+                  <PhoneOff className="h-5 w-5" />
+                </button>
               </div>
             </div>
 
@@ -434,28 +454,27 @@ function RunwaySessionSurface({
 }
 
 function LiveControlButton({
-  active,
   onClick,
   label,
   icon,
-  overlayClass,
-  activeClass,
+  variantClass,
+  disabled,
 }: {
-  active: boolean;
-  onClick: () => void;
+  onClick?: () => void;
   label: string;
   icon: ReactNode;
-  overlayClass: string;
-  activeClass: string;
+  variantClass: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       aria-label={label}
       title={label}
+      disabled={disabled}
       className={cn(
-        "inline-flex h-14 w-14 items-center justify-center rounded-full transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)]",
-        active ? activeClass : overlayClass
+        "inline-flex h-14 w-14 items-center justify-center rounded-full transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)] disabled:cursor-not-allowed disabled:opacity-55",
+        variantClass
       )}
     >
       {icon}

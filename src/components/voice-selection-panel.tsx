@@ -275,14 +275,14 @@ export function VoiceSelectionPanel({
         )}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-        <div className="space-y-5">
-          <div className="space-y-3">
+      <div className="space-y-5">
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,248,248,0.92))] p-5 shadow-[0_14px_32px_rgba(15,23,42,0.04)]">
             <div>
               <h4 className="text-sm font-semibold">Runway defaults</h4>
               <p className="mt-1 text-[12px] text-muted-foreground">Built-in voices tuned for dependable live sessions.</p>
             </div>
-            <div className="max-h-[15.5rem] overflow-y-auto pr-1">
+            <div className="mt-4 max-h-[15.5rem] overflow-y-auto pr-1">
               <div className="space-y-3">
                 {voices.presets.map((voice) => (
                   <CustomVoiceCard
@@ -300,13 +300,13 @@ export function VoiceSelectionPanel({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,248,248,0.92))] p-5 shadow-[0_14px_32px_rgba(15,23,42,0.04)]">
             <div>
               <h4 className="text-sm font-semibold">Custom voices</h4>
               <p className="mt-1 text-[12px] text-muted-foreground">Audio-cloned or description-designed voices you can reuse.</p>
             </div>
             {customVoices.length > 0 ? (
-              <div className="max-h-[15.5rem] overflow-y-auto pr-1">
+              <div className="mt-4 max-h-[15.5rem] overflow-y-auto pr-1">
                 <div className="space-y-3">
                   {customVoices.map((voice) => (
                     <CustomVoiceCard
@@ -323,7 +323,7 @@ export function VoiceSelectionPanel({
                 </div>
               </div>
             ) : (
-              <div className="rounded-[24px] border border-dashed border-border bg-muted/10 px-4 py-6 text-[13px] text-muted-foreground">
+              <div className="mt-4 rounded-[24px] border border-dashed border-border bg-muted/10 px-4 py-6 text-[13px] text-muted-foreground">
                 No custom voices yet. Clone from audio in the library or design one below from a description.
               </div>
             )}
