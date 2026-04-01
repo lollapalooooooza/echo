@@ -7,14 +7,12 @@ import {
   ArrowLeft,
   Camera,
   Loader2,
-  MessageCircle,
   MessageCircleMore,
   Mic,
   MonitorUp,
   MoonStar,
   PhoneOff,
   RefreshCw,
-  Sparkles,
   SunMedium,
   Video,
 } from "lucide-react";
@@ -30,7 +28,7 @@ import {
 } from "@runwayml/avatars-react";
 
 import { cn } from "@/lib/utils";
-import { LiveConversationSidebar } from "@/components/live-conversation-sidebar";
+import { RunwayLiveOverlays } from "@/components/runway-live-overlays";
 
 type RoomTheme = "light" | "dark";
 const ROOM_THEME_STORAGE_KEY = "echonest-room-theme";
@@ -164,6 +162,8 @@ function RunwaySessionSurface({ character, theme }: { character: any; theme: Roo
           }}
         </AvatarVideo>
 
+        <RunwayLiveOverlays character={character} theme={theme} />
+
         <div
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-0 p-5",
@@ -254,7 +254,6 @@ export function RunwayLiveRoom({
 }) {
   const [attempt, setAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>({ status: "connecting" });
-  const [showTranscript, setShowTranscript] = useState(true);
   const [roomTheme, setRoomTheme] = useState<RoomTheme>("light");
   const isLight = roomTheme === "light";
 
@@ -373,27 +372,15 @@ export function RunwayLiveRoom({
           >
             {isLight ? <MoonStar className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />}
           </button>
-
-          <button
-            onClick={() => setShowTranscript((current) => !current)}
-            className={cn(
-              "inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors",
-              isLight ? "bg-white/80 text-slate-600 hover:text-slate-900" : "bg-white/10 text-white/60 hover:text-white"
-            )}
-            aria-label="Toggle transcript"
-          >
-            <MessageCircle className="h-4 w-4" />
-          </button>
         </div>
       </header>
 
       <div
         className={cn(
-          "relative z-10 mx-auto grid max-w-7xl gap-6 px-5 pb-6 lg:h-[calc(100vh-6.5rem)] lg:overflow-hidden lg:pb-8",
-          showTranscript ? "lg:grid-cols-[minmax(0,1fr)_26rem]" : "lg:grid-cols-1"
+          "relative z-10 mx-auto max-w-7xl px-5 pb-6 lg:h-[calc(100vh-6.5rem)] lg:overflow-hidden lg:pb-8"
         )}
       >
-        <div className="min-w-0 lg:min-h-0">
+        <div className="min-w-0 lg:h-full">
           {connection.status === "ready" ? (
             <AvatarSession
               key={`${character.id}:${attempt}`}
@@ -470,12 +457,6 @@ export function RunwayLiveRoom({
             </div>
           )}
         </div>
-
-        {showTranscript && (
-          <div className="w-full lg:flex lg:min-h-0 lg:w-[26rem] lg:flex-shrink-0">
-            <LiveConversationSidebar character={character} theme={roomTheme} />
-          </div>
-        )}
       </div>
     </div>
   );
