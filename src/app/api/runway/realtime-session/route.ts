@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { getRunwayAvatar } from "@/services/runwayAvatar";
+import { getRunwayAvatar, updateRunwayAvatar } from "@/services/runwayAvatar";
 import {
   cancelRealtimeSession,
   consumeRealtimeSession,
@@ -28,7 +28,10 @@ function clampMaxDuration(value: unknown) {
 }
 
 async function getAccessibleCharacter(characterId: string, userId?: string) {
-  const character = await db.character.findUnique({ where: { id: characterId } });
+  const character = await db.character.findUnique({
+    where: { id: characterId },
+    include: { voice: { select: { id: true, name: true } } },
+  });
   if (!character) return null;
 
   const isOwner = !!userId && character.userId === userId;
@@ -81,7 +84,26 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
+    let avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
+
+    // Older avatars may still be on a custom Runway live voice, which disables
+    // webcam and screen sharing. Auto-heal them back to a preset live voice
+    // mapped from the character's saved voice/tone before starting the session.
+    if (avatar.voice?.type !== "runway-live-preset") {
+      await updateRunwayAvatar(character.runwayCharacterId.trim(), {
+        name: character.name,
+        bio: character.bio,
+        greeting: character.greeting,
+        personalityTone: character.personalityTone,
+        voicePreset:
+          character.voice?.name?.trim() ||
+          character.voice?.id ||
+          character.personalityTone ||
+          character.name,
+      });
+      avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
+    }
+
     const visualInputEnabled = avatar.voice?.type === "runway-live-preset";
     if (avatar.status !== "READY") {
       return NextResponse.json(

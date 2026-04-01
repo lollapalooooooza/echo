@@ -443,6 +443,7 @@ function RunwaySessionSurface({
                   disabled={!visualInputEnabled}
                 />
                 <button
+                  type="button"
                   onClick={() => void session.end()}
                   aria-label="End live call"
                   title="End live call"
@@ -513,6 +514,7 @@ function LiveControlButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       aria-label={label}
       title={label}
