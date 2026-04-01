@@ -6,12 +6,41 @@ import { env } from "@/lib/env";
 import { RUNWAY_LIVE_VOICE_PRESETS, type RunwayLiveVoicePreset } from "@/services/runwayVoice";
 
 const BASE = "https://api.elevenlabs.io/v1";
+const MAX_CLONE_FILE_BYTES = 11 * 1024 * 1024;
+const SAFE_CLONE_MIME_TYPES = new Set([
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/mp4",
+  "audio/x-m4a",
+  "audio/aac",
+  "audio/ogg",
+  "audio/webm",
+]);
 
 function headers() {
   return {
     "xi-api-key": env.ELEVENLABS_API_KEY,
     "Content-Type": "application/json",
   };
+}
+
+async function readElevenLabsError(response: Response) {
+  const text = await response.text().catch(() => "");
+
+  try {
+    const data = JSON.parse(text);
+    const detail = data?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail?.message) return String(detail.message);
+    if (data?.error) return String(data.error);
+  } catch {
+    /* ignore JSON parse failures */
+  }
+
+  return text.trim() || `Request failed with status ${response.status}`;
 }
 
 // ── Voice Presets ────────────────────────────────────────────
@@ -202,13 +231,32 @@ export async function generateSpeechStream(
  */
 export async function cloneVoice(
   name: string,
-  audioBuffer: ArrayBuffer
+  audioBuffer: ArrayBuffer,
+  file?: {
+    name?: string | null;
+    contentType?: string | null;
+    size?: number | null;
+  }
 ): Promise<string> {
   if (!env.ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not set");
 
+  const fileSize = file?.size ?? audioBuffer.byteLength;
+  if (fileSize > MAX_CLONE_FILE_BYTES) {
+    throw new Error("Audio sample is too large. ElevenLabs currently accepts files up to 11MB.");
+  }
+
+  const contentType = (file?.contentType || "").trim().toLowerCase();
+  if (contentType && !SAFE_CLONE_MIME_TYPES.has(contentType)) {
+    throw new Error("Unsupported audio format. Please upload WAV, MP3, M4A, OGG, or WebM.");
+  }
+
   const form = new FormData();
   form.append("name", name);
-  form.append("files", new Blob([audioBuffer], { type: "audio/mpeg" }), "sample.mp3");
+  form.append(
+    "files",
+    new Blob([audioBuffer], { type: contentType || "audio/mpeg" }),
+    file?.name?.trim() || "sample.mp3"
+  );
 
   const res = await fetch(`${BASE}/voices/add`, {
     method: "POST",
@@ -216,10 +264,29 @@ export async function cloneVoice(
     body: form,
   });
 
-  if (!res.ok) throw new Error(`ElevenLabs clone failed: ${res.status}`);
+  if (!res.ok) {
+    const message = await readElevenLabsError(res);
+    throw new Error(`ElevenLabs clone failed: ${message}`);
+  }
   const data = await res.json();
   console.log(`[Voice] ✓ Cloned voice: ${data.voice_id}`);
   return data.voice_id;
+}
+
+export async function deleteClonedVoice(elevenLabsVoiceId: string): Promise<void> {
+  if (!env.ELEVENLABS_API_KEY) return;
+
+  const res = await fetch(`${BASE}/voices/${elevenLabsVoiceId}`, {
+    method: "DELETE",
+    headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+  });
+
+  if (res.ok || res.status === 404) {
+    return;
+  }
+
+  const message = await readElevenLabsError(res);
+  throw new Error(`ElevenLabs delete failed: ${message}`);
 }
 
 /**

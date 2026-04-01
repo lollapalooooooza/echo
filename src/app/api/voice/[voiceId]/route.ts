@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { deleteClonedVoice } from "@/services/voice";
 
 export async function DELETE(_: NextRequest, { params }: { params: { voiceId: string } }) {
   const session = await getServerSession(authOptions);
@@ -32,6 +33,8 @@ export async function DELETE(_: NextRequest, { params }: { params: { voiceId: st
       { status: 409 }
     );
   }
+
+  await deleteClonedVoice(voice.elevenLabsVoiceId);
 
   await db.voice.delete({
     where: { id: voice.id },

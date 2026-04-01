@@ -9,6 +9,7 @@ import {
   generateSpeech,
   generateSpeechStream,
   cloneVoice as cloneVoiceNew,
+  deleteClonedVoice as deleteClonedVoiceNew,
   listVoices as listVoicesNew,
   PRESET_VOICES,
 } from "./voiceService";
@@ -23,8 +24,20 @@ export async function synthesizeStream(voiceId: string, text: string): Promise<R
   return generateSpeechStream(text, voiceId);
 }
 
-export async function cloneVoice(name: string, audioBuffer: ArrayBuffer): Promise<string> {
-  return cloneVoiceNew(name, audioBuffer);
+export async function cloneVoice(
+  name: string,
+  audioBuffer: ArrayBuffer,
+  file?: {
+    name?: string | null;
+    contentType?: string | null;
+    size?: number | null;
+  }
+): Promise<string> {
+  return cloneVoiceNew(name, audioBuffer, file);
+}
+
+export async function deleteClonedVoice(elevenLabsVoiceId: string): Promise<void> {
+  return deleteClonedVoiceNew(elevenLabsVoiceId);
 }
 
 export async function listVoices() {

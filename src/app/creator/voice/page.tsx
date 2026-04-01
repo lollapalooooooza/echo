@@ -188,7 +188,7 @@ export default function VoiceLibraryPage() {
               <input
                 ref={fileRef}
                 type="file"
-                accept="audio/*"
+                accept=".mp3,.wav,.m4a,.ogg,.webm,audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/webm"
                 className="block h-11 w-full rounded-2xl border border-border px-4 py-2.5 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-muted file:px-3 file:py-1 file:text-[12px] file:font-medium"
               />
             </label>
@@ -205,7 +205,7 @@ export default function VoiceLibraryPage() {
               {cloning ? "Cloning voice..." : "Clone voice"}
             </button>
             <p className="text-[12px] text-muted-foreground">
-              Tip: use clean speech without background music for the best clone quality.
+              Tip: use WAV, MP3, M4A, OGG, or WebM under 11MB, with clean speech and no background music.
             </p>
           </div>
 
