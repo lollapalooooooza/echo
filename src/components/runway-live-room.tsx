@@ -362,15 +362,15 @@ function RunwaySessionSurface({
 
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/16 via-black/4 to-transparent" />
 
-            <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
-              <div className="pointer-events-auto flex flex-wrap justify-center gap-3 sm:gap-4">
+            <div className="absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
+              <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
                 <LiveControlButton
                   onClick={
                     media.micError
                       ? () => void media.retryMic()
-                      : media.hasMic
+                      : media.isMicEnabled
                         ? media.toggleMic
-                        : undefined
+                        : () => void media.retryMic()
                   }
                   label={
                     media.micError
@@ -389,7 +389,6 @@ function RunwaySessionSurface({
                         ? controlActiveClass
                         : controlInactiveClass
                   }
-                  disabled={!media.hasMic && !media.micError}
                 />
                 <LiveControlButton
                   onClick={
@@ -397,9 +396,9 @@ function RunwaySessionSurface({
                       ? undefined
                       : media.cameraError
                       ? () => void media.retryCamera()
-                      : media.hasCamera
+                      : media.isCameraEnabled
                         ? media.toggleCamera
-                        : undefined
+                        : () => void media.retryCamera()
                   }
                   label={
                     !visualInputEnabled
@@ -422,7 +421,7 @@ function RunwaySessionSurface({
                         ? controlActiveClass
                         : controlInactiveClass
                   }
-                  disabled={!visualInputEnabled || (!media.hasCamera && !media.cameraError)}
+                  disabled={!visualInputEnabled}
                 />
                 <LiveControlButton
                   onClick={visualInputEnabled ? media.toggleScreenShare : undefined}
