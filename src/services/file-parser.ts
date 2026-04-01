@@ -1,5 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
 import mammoth from "mammoth";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const AdmZip = require("adm-zip");
@@ -28,16 +26,46 @@ export async function parseFile(buffer: Buffer, filename: string): Promise<Parse
   }
 }
 
+function loadNodeCanvasPolyfills() {
+  const runtimeRequire = Function("return require")() as NodeRequire;
+  const { DOMMatrix, ImageData, Path2D } = runtimeRequire("@napi-rs/canvas");
+
+  if (typeof (globalThis as any).DOMMatrix === "undefined") {
+    (globalThis as any).DOMMatrix = DOMMatrix;
+  }
+  if (typeof (globalThis as any).ImageData === "undefined") {
+    (globalThis as any).ImageData = ImageData;
+  }
+  if (typeof (globalThis as any).Path2D === "undefined") {
+    (globalThis as any).Path2D = Path2D;
+  }
+}
+
 async function parsePdf(buffer: Buffer, filename: string): Promise<ParseResult> {
   try {
-    const data = await pdfParse(buffer);
-    if (!data.text || data.text.trim().length < 10) {
+    // pdf-parse v2 expects the PDFParse class, and Node runtimes may need
+    // canvas-backed DOM polyfills before pdf.js loads.
+    loadNodeCanvasPolyfills();
+
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({
+      data: new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength),
+    });
+
+    const [textResult, infoResult] = await Promise.all([
+      parser.getText(),
+      parser.getInfo().catch(() => null),
+    ]);
+
+    await parser.destroy().catch(() => {});
+
+    if (!textResult.text || textResult.text.trim().length < 10) {
       throw new Error("PDF contained no extractable text. It may be image-only or password-protected.");
     }
     return {
-      text: data.text,
-      title: data.info?.Title || filename.replace(/\.pdf$/i, ""),
-      pageCount: data.numpages,
+      text: textResult.text,
+      title: infoResult?.info?.Title || filename.replace(/\.pdf$/i, ""),
+      pageCount: infoResult?.total || undefined,
     };
   } catch (err: any) {
     if (err.message?.includes("no extractable text")) throw err;
