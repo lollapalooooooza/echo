@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
+    const visualInputEnabled = avatar.voice?.type === "runway-live-preset";
     if (avatar.status !== "READY") {
       return NextResponse.json(
         {
@@ -153,6 +154,7 @@ export async function POST(req: NextRequest) {
           token: credentials.token,
           roomName: credentials.roomName,
           clientEventsEnabled,
+          visualInputEnabled,
         });
       }
 

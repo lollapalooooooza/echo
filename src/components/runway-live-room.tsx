@@ -22,6 +22,7 @@ import { isTrackReference } from "@livekit/components-react";
 import {
   AvatarSession,
   AvatarVideo,
+  ScreenShareVideo,
   UserVideo,
   VideoTrack,
   type SessionCredentials,
@@ -37,7 +38,12 @@ const ROOM_THEME_STORAGE_KEY = "echonest-room-theme";
 
 type ConnectionState =
   | { status: "connecting" }
-  | { status: "ready"; credentials: SessionCredentials; clientEventsEnabled: boolean }
+  | {
+      status: "ready";
+      credentials: SessionCredentials;
+      clientEventsEnabled: boolean;
+      visualInputEnabled: boolean;
+    }
   | { status: "error"; error: string }
   | { status: "ended" };
 
@@ -163,10 +169,12 @@ function RunwaySessionSurface({
   character,
   theme,
   clientEventsEnabled,
+  visualInputEnabled,
 }: {
   character: any;
   theme: RoomTheme;
   clientEventsEnabled: boolean;
+  visualInputEnabled: boolean;
 }) {
   const session = useAvatarSession();
   const media = useLocalMedia();
@@ -385,14 +393,18 @@ function RunwaySessionSurface({
                 />
                 <LiveControlButton
                   onClick={
-                    media.cameraError
+                    !visualInputEnabled
+                      ? undefined
+                      : media.cameraError
                       ? () => void media.retryCamera()
                       : media.hasCamera
                         ? media.toggleCamera
                         : undefined
                   }
                   label={
-                    media.cameraError
+                    !visualInputEnabled
+                      ? "This avatar does not support camera input"
+                      : media.cameraError
                       ? "Retry camera"
                       : !media.hasCamera
                         ? "No camera detected"
@@ -400,21 +412,36 @@ function RunwaySessionSurface({
                           ? "Turn camera off"
                           : "Turn camera on"
                   }
-                  icon={media.cameraError || !media.hasCamera || !media.isCameraEnabled ? <VideoOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
+                  icon={media.cameraError || !media.hasCamera || !media.isCameraEnabled || !visualInputEnabled ? <VideoOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
                   variantClass={
-                    media.cameraError || !media.hasCamera
+                    !visualInputEnabled
+                      ? controlInactiveClass
+                      : media.cameraError || !media.hasCamera
                       ? controlAlertClass
                       : media.isCameraEnabled
                         ? controlActiveClass
                         : controlInactiveClass
                   }
-                  disabled={!media.hasCamera && !media.cameraError}
+                  disabled={!visualInputEnabled || (!media.hasCamera && !media.cameraError)}
                 />
                 <LiveControlButton
-                  onClick={media.toggleScreenShare}
-                  label={media.isScreenShareEnabled ? "Stop sharing screen" : "Share screen"}
+                  onClick={visualInputEnabled ? media.toggleScreenShare : undefined}
+                  label={
+                    visualInputEnabled
+                      ? media.isScreenShareEnabled
+                        ? "Stop sharing screen"
+                        : "Share screen"
+                      : "This avatar does not support screen sharing"
+                  }
                   icon={<MonitorUp className="h-5 w-5" />}
-                  variantClass={media.isScreenShareEnabled ? controlShareClass : controlIdleClass}
+                  variantClass={
+                    !visualInputEnabled
+                      ? controlInactiveClass
+                      : media.isScreenShareEnabled
+                        ? controlShareClass
+                        : controlIdleClass
+                  }
+                  disabled={!visualInputEnabled}
                 />
                 <button
                   onClick={() => void session.end()}
@@ -446,6 +473,25 @@ function RunwaySessionSurface({
                 ) : null
               }
             </UserVideo>
+
+            <ScreenShareVideo>
+              {(screen) =>
+                screen.isSharing && screen.trackRef && isTrackReference(screen.trackRef) ? (
+                  <div className="absolute bottom-24 left-5 z-20 w-[min(34vw,20rem)] overflow-hidden rounded-[24px] border border-white/55 bg-black/12 shadow-[0_10px_30px_rgba(15,23,42,0.18)] backdrop-blur-md sm:bottom-28 sm:left-6">
+                    <div className="flex items-center justify-between border-b border-white/18 bg-black/24 px-3 py-2 text-[11px] font-medium text-white/88 backdrop-blur-xl">
+                      <span>Shared screen</span>
+                      <span className="inline-flex items-center gap-1.5 text-white/68">
+                        <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,0.65)]" />
+                        Avatar can see this
+                      </span>
+                    </div>
+                    <div className="aspect-[16/10] bg-black/20">
+                      <VideoTrack trackRef={screen.trackRef} className="h-full w-full object-cover" />
+                    </div>
+                  </div>
+                ) : null
+              }
+            </ScreenShareVideo>
           </>
         )}
       </div>
@@ -545,6 +591,7 @@ export function RunwayLiveRoom({
             roomName: data.roomName,
           },
           clientEventsEnabled: data.clientEventsEnabled !== false,
+          visualInputEnabled: data.visualInputEnabled !== false,
         });
       } catch (error: any) {
         if (!cancelled) {
@@ -630,11 +677,12 @@ export function RunwayLiveRoom({
                 onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
               >
                 <RunwaySessionSurface
-                  character={character}
-                  theme={roomTheme}
-                  clientEventsEnabled={connection.clientEventsEnabled}
-                />
-              </AvatarSession>
+                character={character}
+                theme={roomTheme}
+                clientEventsEnabled={connection.clientEventsEnabled}
+                visualInputEnabled={connection.visualInputEnabled}
+              />
+            </AvatarSession>
             </div>
           ) : connection.status === "connecting" ? (
             <div className="h-full min-h-0">
