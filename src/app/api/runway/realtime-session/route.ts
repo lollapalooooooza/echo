@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { getRunwayAvatar, updateRunwayAvatar } from "@/services/runwayAvatar";
+import { getRunwayAvatar } from "@/services/runwayAvatar";
 import {
   cancelRealtimeSession,
   consumeRealtimeSession,
@@ -84,27 +84,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
+    const avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
 
-    // Older avatars may still be on a custom Runway live voice, which disables
-    // webcam and screen sharing. Auto-heal them back to a preset live voice
-    // mapped from the character's saved voice/tone before starting the session.
-    if (avatar.voice?.type !== "runway-live-preset") {
-      await updateRunwayAvatar(character.runwayCharacterId.trim(), {
-        name: character.name,
-        bio: character.bio,
-        greeting: character.greeting,
-        personalityTone: character.personalityTone,
-        voicePreset:
-          character.voice?.name?.trim() ||
-          character.voice?.id ||
-          character.personalityTone ||
-          character.name,
-      });
-      avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
-    }
-
-    const visualInputEnabled = avatar.voice?.type === "runway-live-preset";
+    // Custom voices (non-preset) are fully valid for live sessions — they just
+    // don't support webcam / screen-sharing visual input.  We no longer force-
+    // overwrite the avatar voice to a preset before every session, because that
+    // auto-heal triggered Runway to re-process the avatar (potentially leaving
+    // it in a non-READY state) and conflicted with voices deliberately chosen
+    // on the Runway website or dashboard.
+    const isPresetVoice = avatar.voice?.type === "runway-live-preset";
+    const visualInputEnabled = isPresetVoice;
     if (avatar.status !== "READY") {
       return NextResponse.json(
         {
@@ -116,7 +105,7 @@ export async function POST(req: NextRequest) {
     }
 
     const maxDuration = clampMaxDuration(body?.maxDuration);
-    let clientEventsEnabled = avatar.voice?.type === "runway-live-preset";
+    let clientEventsEnabled = true;
     let created;
 
     try {
