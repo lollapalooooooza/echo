@@ -39,6 +39,34 @@ async function readResponse(response: Response) {
   };
 }
 
+function resolveAvailableVoiceSelection(
+  character: any,
+  voiceLibrary: { presets?: any[]; custom?: any[] } | null | undefined
+) {
+  const selectedVoiceId =
+    character.voice && !character.voice.isDefault && !String(character.voice.id || "").startsWith("preset_")
+      ? String(character.voice.id || "")
+      : String(character.voice?.elevenLabsVoiceId || "");
+  const selectedVoiceName = String(character.voice?.name || "");
+
+  if (!selectedVoiceId || !voiceLibrary) {
+    return { voiceId: selectedVoiceId, voiceName: selectedVoiceName };
+  }
+
+  const presetMatch = Array.isArray(voiceLibrary.presets)
+    ? voiceLibrary.presets.some((voice) => String(voice.id || "") === selectedVoiceId)
+    : false;
+  const customMatch = Array.isArray(voiceLibrary.custom)
+    ? voiceLibrary.custom.some((voice) => String(voice.id || "") === selectedVoiceId)
+    : false;
+
+  if (!presetMatch && !customMatch) {
+    return { voiceId: "", voiceName: "" };
+  }
+
+  return { voiceId: selectedVoiceId, voiceName: selectedVoiceName };
+}
+
 export default function EditCharacterPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [char, setChar] = useState<any>(null);
@@ -122,13 +150,20 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
         if (cancelled) return;
 
+        const resolvedVoiceSelection = voicesRes.ok
+          ? resolveAvailableVoiceSelection(current, voicesData)
+          : {
+              voiceId:
+                current.voice && !current.voice.isDefault && !String(current.voice.id || "").startsWith("preset_")
+                  ? current.voice.id
+                  : current.voice?.elevenLabsVoiceId || "",
+              voiceName: current.voice?.name || "",
+            };
+
         setChar({
           ...current,
-          voiceId:
-            current.voice && !current.voice.isDefault && !String(current.voice.id || "").startsWith("preset_")
-              ? current.voice.id
-              : current.voice?.elevenLabsVoiceId || "",
-          voiceName: current.voice?.name || "",
+          voiceId: resolvedVoiceSelection.voiceId,
+          voiceName: resolvedVoiceSelection.voiceName,
           knowledgeSourceIds: current.knowledgeSources?.map((link: any) => link.source.id) || [],
         });
 
@@ -323,7 +358,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
   const iframeSnippet = `<iframe src="${appUrl}/embed/${char.id}" width="400" height="600" style="border:none;border-radius:16px" allow="microphone"></iframe>`;
   const runwayAvatarStatus = typeof runwayAvatar?.status === "string" ? runwayAvatar.status.toUpperCase() : "";
   const canGenerateRunwayAvatar = !!char.avatarUrl;
-  const showRunwayGenerateButton = canGenerateRunwayAvatar && (!char.runwayCharacterId || runwayAvatarStatus === "FAILED");
+  const showRunwayGenerateButton = canGenerateRunwayAvatar && !char.runwayCharacterId;
   const liveSessionDisabled = !char.runwayCharacterId || runwayAvatarStatus === "FAILED";
 
   return (
@@ -409,7 +444,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
           <div>
             <h3 className="text-sm font-semibold">Character Voice</h3>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              Choose a preset or one of your cloned voices. EchoNest uses this voice for synthesized speech and widget playback, and Runway live sessions now auto-match the closest compatible live voice when the exact cloned voice cannot be passed through directly.
+              Choose a preset or one of your cloned voices. Echo uses this voice for synthesized speech, fallback chat, and widget playback only. Live sessions keep using the linked Runway avatar exactly as configured in Runway.
             </p>
           </div>
 
@@ -427,7 +462,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
         <div className="rounded-xl border border-border bg-white p-5 space-y-3">
           <h3 className="text-sm font-semibold">Runway Live Character</h3>
-          <p className="text-[13px] text-muted-foreground">Manage the real-time Runway avatar used for live sessions and instant face-to-face conversations.</p>
+          <p className="text-[13px] text-muted-foreground">Manage the real-time Runway avatar used for live sessions. Echo treats linked Runway avatars as read-only and will not overwrite their voice when you connect or save this character.</p>
           <div className="rounded-lg border border-border bg-muted/20 p-3 text-[13px]">
             <p><span className="font-medium">Character ID:</span> {char.runwayCharacterId || "Not configured"}</p>
             <p className="mt-1">
@@ -449,7 +484,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
             {showRunwayGenerateButton && (
               <button onClick={regenerateRunwayAvatar} disabled={regeneratingRunwayAvatar} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[13px] font-medium hover:bg-muted/30 disabled:opacity-50">
                 {regeneratingRunwayAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
-                {runwayAvatarStatus === "FAILED" ? "Regenerate avatar" : "Generate avatar"}
+                Generate avatar
               </button>
             )}
             <a href={`/room/${char.slug}`} target="_blank" className={cn("flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-white hover:opacity-80", liveSessionDisabled && "pointer-events-none opacity-50")}>
@@ -457,10 +492,11 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
             </a>
           </div>
           {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload a character image to generate a Runway live character.</p>}
+          {char.runwayCharacterId && <p className="text-[11px] text-muted-foreground">This character is linked to an existing Runway avatar. Echo will host that ID as-is and will not regenerate or replace it.</p>}
           {char.runwayCharacterId && Array.isArray(runwayAvatar?.documentIds) && runwayAvatar.documentIds.length === 0 && (
-            <p className="text-[11px] text-amber-600">Runway still shows zero attached knowledge documents for this avatar. Save the character again or regenerate the avatar to resync its knowledge.</p>
+            <p className="text-[11px] text-amber-600">Runway still shows zero attached knowledge documents for this avatar. Echo does not push knowledge updates onto an already linked Runway avatar; attach docs in Runway or generate a new avatar in Echo if you need Runway-side knowledge.</p>
           )}
-          {runwayAvatarStatus === "FAILED" && <p className="text-[11px] text-amber-600">Runway marked this avatar as failed. Regenerate it to restore live sessions.</p>}
+          {runwayAvatarStatus === "FAILED" && <p className="text-[11px] text-amber-600">Runway marked this avatar as failed. Fix or replace it in Runway, then update the linked avatar ID here if needed.</p>}
         </div>
 
         <div className="rounded-xl border border-border bg-white p-5 space-y-3">

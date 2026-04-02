@@ -3,10 +3,17 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createRunwayAvatar, getRunwayAvatar } from "@/services/runwayAvatar";
+import {
+  createRunwayAvatar,
+  getRunwayAvatar,
+  getRunwayAvatarVoiceConfig,
+} from "@/services/runwayAvatar";
 import { getLinkedSourceIds } from "@/services/character";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
-import { inferRunwayLiveVoicePreset } from "@/services/runwayVoice";
+import {
+  DEFAULT_RUNWAY_LIVE_VOICE_PRESET,
+  normalizeRunwayLiveVoicePreset,
+} from "@/services/runwayVoice";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +74,6 @@ export async function POST(req: NextRequest) {
 
   const character = await db.character.findUnique({
     where: { id: characterId },
-    include: { voice: true },
   });
   if (!character || character.userId !== userId) {
     return NextResponse.json({ error: "Character not found" }, { status: 404 });
@@ -77,19 +83,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Upload a character image before generating a Runway avatar" }, { status: 400 });
   }
 
+  if (character.runwayCharacterId?.trim() && body?.forceRegenerate !== true) {
+    return NextResponse.json(
+      {
+        error: "This character is already linked to an existing Runway avatar. Echo will not replace it automatically.",
+        runwayCharacterId: character.runwayCharacterId.trim(),
+      },
+      { status: 409 }
+    );
+  }
+
   try {
+    let preservedVoice = null;
+    if (character.runwayCharacterId?.trim()) {
+      try {
+        const currentAvatar = await getRunwayAvatar(character.runwayCharacterId.trim());
+        preservedVoice = getRunwayAvatarVoiceConfig(currentAvatar);
+      } catch (error) {
+        console.warn(
+          `[RunwayAvatar] Failed to inspect existing avatar ${character.runwayCharacterId} before regeneration:`,
+          error
+        );
+      }
+    }
+
     const avatar = await createRunwayAvatar({
       name: character.name,
       bio: character.bio,
       greeting: character.greeting,
       personalityTone: character.personalityTone,
       avatarUrl: character.avatarUrl.trim(),
-      voicePreset: inferRunwayLiveVoicePreset({
-        voiceId: character.voice?.elevenLabsVoiceId,
-        voiceName: character.voice?.name,
-        tone: character.personalityTone,
-        bio: character.bio,
-      }),
+      voice: preservedVoice,
+      voicePreset:
+        normalizeRunwayLiveVoicePreset(body?.runwayVoicePreset) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET,
     });
 
     const runwayCharacterId = (avatar as any)?.id as string | undefined;

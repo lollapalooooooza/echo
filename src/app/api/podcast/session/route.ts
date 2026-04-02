@@ -21,6 +21,7 @@ function anthropic() {
 
 type CharacterInfo = {
   id: string;
+  userId: string;
   name: string;
   bio: string;
   personalityTone: string;
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
   const activeChar = speakerTurn === "A" ? charA : charB;
   const otherChar = speakerTurn === "A" ? charB : charA;
 
-  const knowledge = await gatherKnowledge(activeChar.id, activeChar.id, topic);
+  const knowledge = await gatherKnowledge(activeChar.id, activeChar.userId, topic);
   const systemPrompt = buildPodcastSystemPrompt(activeChar, otherChar, knowledge, topic);
 
   const messages = history.length > 0

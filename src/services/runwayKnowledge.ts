@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 import { db } from "@/lib/db";
+import { getRunwayAvatarPreservedFields } from "@/services/runwayAvatar";
 import { getRunwayClient } from "@/services/runwayClient";
 
 const MAX_RUNWAY_AVATAR_DOCUMENTS = 50;
@@ -316,7 +317,11 @@ export async function syncRunwayKnowledgeToAvatar(avatarId: string, userId: stri
   const client = getRunwayClient();
   const sources = await resolveKnowledgeSourcesForRunway(userId, sourceIds);
   if (sources.length === 0) {
-    await client.avatars.update(avatarId, { documentIds: [] });
+    const avatarBeforeClear = await client.avatars.retrieve(avatarId);
+    await client.avatars.update(avatarId, {
+      ...getRunwayAvatarPreservedFields(avatarBeforeClear),
+      documentIds: [],
+    });
     await verifyAvatarDocumentAttachment(avatarId, []);
     return [] as string[];
   }
@@ -354,6 +359,7 @@ export async function syncRunwayKnowledgeToAvatar(avatarId: string, userId: stri
     : [];
 
   await client.avatars.update(avatarId, {
+    ...getRunwayAvatarPreservedFields(avatarBeforeUpdate),
     documentIds,
   });
   await verifyAvatarDocumentAttachment(avatarId, documentIds);
@@ -394,7 +400,11 @@ async function verifyAvatarDocumentAttachment(avatarId: string, documentIds: str
 
     if (attempt === 0) {
       await new Promise((resolve) => setTimeout(resolve, 1200));
-      await client.avatars.update(avatarId, { documentIds });
+      const avatarBeforeRetry = await client.avatars.retrieve(avatarId);
+      await client.avatars.update(avatarId, {
+        ...getRunwayAvatarPreservedFields(avatarBeforeRetry),
+        documentIds,
+      });
     }
   }
 

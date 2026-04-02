@@ -162,7 +162,7 @@ export default function NewCharacterPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Create Character</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Set up identity, knowledge, voice, and personality.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Set up identity, knowledge, Echo playback voice, and the Runway avatar link.</p>
         </div>
         <button onClick={handleSave} disabled={saving || generatingVideo}
           className="flex h-9 items-center gap-1.5 rounded-lg bg-foreground px-5 text-[13px] font-medium text-white hover:opacity-80 disabled:opacity-50 transition-opacity">
@@ -276,7 +276,7 @@ export default function NewCharacterPage() {
             <input value={form.runwayCharacterId} onChange={(e) => set("runwayCharacterId", e.target.value)}
               placeholder="Optional existing avat_xxx"
               className="h-9 w-full rounded-lg border border-border px-3 text-sm outline-none focus:border-foreground transition-colors" />
-            <p className="mt-1 text-[11px] text-muted-foreground">Leave blank to auto-create from uploaded image.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">Paste an existing Runway avatar ID to use it as-is. If you leave this blank, Echo will create the character without any Runway avatar attached; you can generate one later from the edit page if you want a brand-new Runway avatar.</p>
           </Field>
         </Section>
 

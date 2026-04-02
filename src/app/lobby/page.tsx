@@ -167,7 +167,7 @@ export default function LobbyPage() {
                   <h3 className="text-sm font-semibold text-orange-900">Podcast Mode</h3>
                 </div>
                 <p className="mt-1 text-[13px] text-orange-700/80">
-                  Select two characters below to start a podcast-style discussion. They will take turns sharing their perspectives on your chosen topic.
+                  Select two characters below to open the podcast studio. Runway Live is the default host mode there, and you can switch to the chat box fallback anytime for automated back-and-forth on your chosen topic.
                 </p>
               </div>
               <button

@@ -178,6 +178,11 @@ export function isRunwayLiveVoicePreset(value?: string | null): value is RunwayL
   return !!value && RUNWAY_PRESET_SET.has(value);
 }
 
+export function normalizeRunwayLiveVoicePreset(value?: string | null): RunwayLiveVoicePreset | null {
+  const normalizedValue = normalize(value);
+  return isRunwayLiveVoicePreset(normalizedValue) ? normalizedValue : null;
+}
+
 export function inferRunwayLiveVoicePreset(input: {
   voiceId?: string | null;
   voiceName?: string | null;
@@ -227,7 +232,8 @@ export function buildRunwayPersonality(input: {
 }) {
   const tone = normalize(input.tone) || "friendly";
   const name = input.name?.trim() || "";
-  const bio = sanitizeRunwayBio(input.bio || "", name).toLowerCase();
+  const sanitizedBio = sanitizeRunwayBio(input.bio || "", name);
+  const bio = sanitizedBio.toLowerCase();
   const adjectives: string[] = [];
   const seen = new Set<string>();
 
@@ -255,7 +261,19 @@ export function buildRunwayPersonality(input: {
     ["grounded", "clear", "natural", "engaging"].forEach(addAdjective);
   }
 
-  return adjectives.slice(0, 8).join(", ");
+  const style = adjectives.slice(0, 8).join(", ");
+  const lines = [
+    `Adopt a ${tone} conversational style that feels ${style}.`,
+    sanitizedBio
+      ? `Core personality and expertise: ${sanitizedBio}.`
+      : "Be concise, clear, and conversational.",
+    "Stay grounded in the attached knowledge and current conversation context.",
+    "Respond naturally to what the visitor says instead of waiting passively.",
+    "Do not claim any real-world human identity or introduce yourself with a personal name.",
+    "If you do not know something, say so directly instead of inventing details.",
+  ];
+
+  return lines.join(" ");
 }
 
 export function buildRunwaySessionPersonality(input: {
@@ -264,13 +282,14 @@ export function buildRunwaySessionPersonality(input: {
   tone?: string | null;
   enableArticleTool?: boolean;
 }) {
-  const adjectives = buildRunwayPersonality(input);
+  const corePrompt = buildRunwayPersonality(input);
   const bioSnippet = sanitizeRunwayBio(input.bio || "", input.name?.trim() || "").slice(0, 360);
 
   const instructions = [
-    `Speaking style: ${adjectives}.`,
+    corePrompt,
     bioSnippet ? `Stay grounded in this profile: ${bioSnippet}.` : null,
     "Have a natural real-time conversation, listen carefully, and answer clearly and directly.",
+    "When the visitor speaks, answer out loud promptly in a natural spoken cadence.",
     "Use the attached knowledge documents whenever they help answer the visitor accurately.",
     input.enableArticleTool
       ? "If the visitor explicitly asks to open, read, inspect, or see the article, post, source, newsletter, or original write-up behind your answer, immediately send the show_article_overlay client event once. Put the best article title, author, publication, or topic into articleHint so the UI can surface the correct reading link. Do not use this tool for normal conversation."

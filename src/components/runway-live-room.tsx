@@ -5,25 +5,20 @@ import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
-  Camera,
   Loader2,
   MessageCircleMore,
   Mic,
   MicOff,
-  MonitorUp,
   MoonStar,
   PhoneOff,
   RefreshCw,
   SunMedium,
   Video,
-  VideoOff,
 } from "lucide-react";
 import { isTrackReference, useRoomContext } from "@livekit/components-react";
 import {
   AvatarSession,
   AvatarVideo,
-  ScreenShareVideo,
-  UserVideo,
   VideoTrack,
   type SessionCredentials,
   useLocalMedia,
@@ -32,19 +27,13 @@ import {
 import { RoomEvent } from "livekit-client";
 
 import { cn } from "@/lib/utils";
-import { RunwayLiveOverlays } from "@/components/runway-live-overlays";
 
 type RoomTheme = "light" | "dark";
 const ROOM_THEME_STORAGE_KEY = "echonest-room-theme";
 
 type ConnectionState =
   | { status: "connecting" }
-  | {
-      status: "ready";
-      credentials: SessionCredentials;
-      clientEventsEnabled: boolean;
-      visualInputEnabled: boolean;
-    }
+  | { status: "ready"; credentials: SessionCredentials }
   | { status: "error"; error: string }
   | { status: "ended" };
 
@@ -169,20 +158,15 @@ function RunwayAvatarStage({
 function RunwaySessionSurface({
   character,
   theme,
-  clientEventsEnabled,
-  visualInputEnabled,
 }: {
   character: any;
   theme: RoomTheme;
-  clientEventsEnabled: boolean;
-  visualInputEnabled: boolean;
 }) {
   const session = useAvatarSession();
   const media = useLocalMedia();
   const room = useRoomContext();
   const isLight = theme === "light";
   const [videoReady, setVideoReady] = useState(false);
-  const [overlayTone, setOverlayTone] = useState<"light" | "dark">(isLight ? "dark" : "light");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
   const avatarStageRef = useRef<HTMLDivElement | null>(null);
@@ -218,59 +202,6 @@ function RunwaySessionSurface({
   ]);
 
   useEffect(() => {
-    if (!videoReady) {
-      setOverlayTone(isLight ? "dark" : "light");
-      return;
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 28;
-    canvas.height = 20;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-
-    if (!context) {
-      return;
-    }
-
-    const sampleTone = () => {
-      const video = avatarStageRef.current?.querySelector("video");
-      if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
-        return;
-      }
-
-      try {
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const sampleHeight = Math.max(4, Math.floor(canvas.height * 0.35));
-        const frame = context.getImageData(0, 0, canvas.width, sampleHeight).data;
-
-        let luminanceTotal = 0;
-        let pixels = 0;
-
-        for (let index = 0; index < frame.length; index += 4) {
-          const alpha = frame[index + 3] / 255;
-          if (alpha < 0.2) continue;
-
-          const red = frame[index];
-          const green = frame[index + 1];
-          const blue = frame[index + 2];
-          luminanceTotal += 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-          pixels += 1;
-        }
-
-        if (pixels > 0) {
-          setOverlayTone(luminanceTotal / pixels > 158 ? "dark" : "light");
-        }
-      } catch {
-        // Some runtimes may block sampling video frames; keep the fallback tone.
-      }
-    };
-
-    sampleTone();
-    const intervalId = window.setInterval(sampleTone, 1500);
-    return () => window.clearInterval(intervalId);
-  }, [videoReady, isLight]);
-
-  useEffect(() => {
     if (!videoReady || session.state !== "active") {
       if (session.state !== "active") {
         sessionStartedAtRef.current = null;
@@ -293,33 +224,22 @@ function RunwaySessionSurface({
     return () => window.clearInterval(intervalId);
   }, [session.state, videoReady]);
 
-  const useDarkText = overlayTone === "dark";
-  const overlayTextClass = useDarkText ? "text-slate-950" : "text-white";
-  const badgeClass = useDarkText
-    ? "bg-white/70 text-slate-950"
-    : "bg-black/32 text-white";
-  const titleGlassClass = useDarkText
-    ? "bg-white/52 text-slate-950 ring-1 ring-white/68"
-    : "bg-black/24 text-white ring-1 ring-white/12";
-  const badgeGlassClass = useDarkText
-    ? "bg-white/66 text-slate-950 ring-1 ring-white/68"
+  const liveNeedsWake = session.state === "active" && (!canPlaybackAudio || (!!media.hasMic && (!media.isMicEnabled || !!media.micError)));
+  const titleGlassClass = isLight
+    ? "bg-white/68 text-slate-950 ring-1 ring-white/85"
     : "bg-black/30 text-white ring-1 ring-white/12";
-  const controlIdleClass = useDarkText
-    ? "bg-white/58 text-slate-950 hover:bg-white/72"
-    : "bg-black/26 text-white hover:bg-black/36";
-  const controlActiveClass = useDarkText
-    ? "bg-slate-950/86 text-white hover:bg-slate-950"
+  const badgeGlassClass = isLight
+    ? "bg-white/78 text-slate-950 ring-1 ring-white/85"
+    : "bg-black/36 text-white ring-1 ring-white/12";
+  const controlActiveClass = isLight
+    ? "bg-slate-950/92 text-white hover:bg-slate-950"
     : "bg-white/18 text-white hover:bg-white/24";
-  const controlInactiveClass = useDarkText
-    ? "bg-white/82 text-slate-500 ring-1 ring-slate-300/72 hover:bg-white"
+  const controlInactiveClass = isLight
+    ? "bg-white/88 text-slate-500 ring-1 ring-slate-300/72 hover:bg-white"
     : "bg-black/34 text-white/55 ring-1 ring-white/12 hover:bg-black/42";
-  const controlAlertClass = useDarkText
+  const controlAlertClass = isLight
     ? "bg-amber-50/96 text-amber-700 ring-1 ring-amber-300/85 hover:bg-amber-100"
     : "bg-amber-500/20 text-amber-100 ring-1 ring-amber-300/30 hover:bg-amber-500/28";
-  const controlShareClass = useDarkText
-    ? "bg-sky-500/92 text-white shadow-[0_6px_18px_rgba(14,165,233,0.32)] hover:bg-sky-500"
-    : "bg-sky-500/82 text-white shadow-[0_6px_18px_rgba(14,165,233,0.24)] hover:bg-sky-500/90";
-  const liveNeedsWake = session.state === "active" && (!canPlaybackAudio || (!!media.hasMic && (!media.isMicEnabled || !!media.micError)));
 
   async function warmLiveSession() {
     if (!room.canPlaybackAudio) {
@@ -373,10 +293,9 @@ function RunwaySessionSurface({
                 <h2
                   className={cn(
                     "text-[clamp(1.2rem,2vw,1.75rem)] leading-[0.96] tracking-[-0.03em]",
-                    overlayTextClass,
-                    useDarkText
-                      ? "drop-shadow-[0_1px_8px_rgba(255,255,255,0.16)]"
-                      : "drop-shadow-[0_1px_10px_rgba(0,0,0,0.22)]"
+                    isLight
+                      ? "text-slate-950 drop-shadow-[0_1px_8px_rgba(255,255,255,0.16)]"
+                      : "text-white drop-shadow-[0_1px_10px_rgba(0,0,0,0.22)]"
                   )}
                   style={{ fontFamily: "var(--font-display)" }}
                 >
@@ -389,7 +308,6 @@ function RunwaySessionSurface({
               <div
                 className={cn(
                   "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] shadow-[0_4px_10px_rgba(15,23,42,0.08)] backdrop-blur-[16px]",
-                  badgeClass,
                   badgeGlassClass
                 )}
               >
@@ -401,16 +319,10 @@ function RunwaySessionSurface({
                   }}
                 />
                 <span>Live</span>
-                <span className={cn("h-3.5 w-px", useDarkText ? "bg-slate-300/80" : "bg-white/24")} />
+                <span className={cn("h-3.5 w-px", isLight ? "bg-slate-300/80" : "bg-white/24")} />
                 <span>{formatElapsed(elapsedSeconds)}</span>
               </div>
             </div>
-
-            <RunwayLiveOverlays
-              character={character}
-              theme={theme}
-              clientEventsEnabled={clientEventsEnabled}
-            />
 
             {liveNeedsWake && (
               <div className="absolute inset-x-0 top-20 z-20 flex justify-center px-4 sm:top-24">
@@ -419,7 +331,7 @@ function RunwaySessionSurface({
                   onClick={() => void warmLiveSession()}
                   className={cn(
                     "inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium backdrop-blur-xl transition-colors",
-                    useDarkText
+                    isLight
                       ? "bg-white/76 text-slate-900 shadow-[0_6px_18px_rgba(15,23,42,0.08)] hover:bg-white"
                       : "bg-black/42 text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] hover:bg-black/54"
                   )}
@@ -464,58 +376,6 @@ function RunwaySessionSurface({
                         : controlInactiveClass
                   }
                 />
-                <LiveControlButton
-                  onClick={
-                    !visualInputEnabled
-                      ? undefined
-                      : media.cameraError
-                      ? () => void media.retryCamera()
-                      : media.isCameraEnabled
-                        ? media.toggleCamera
-                        : () => void media.retryCamera()
-                  }
-                  label={
-                    !visualInputEnabled
-                      ? "This avatar does not support camera input"
-                      : media.cameraError
-                      ? "Retry camera"
-                      : !media.hasCamera
-                        ? "No camera detected"
-                        : media.isCameraEnabled
-                          ? "Turn camera off"
-                          : "Turn camera on"
-                  }
-                  icon={media.cameraError || !media.hasCamera || !media.isCameraEnabled || !visualInputEnabled ? <VideoOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
-                  variantClass={
-                    !visualInputEnabled
-                      ? controlInactiveClass
-                      : media.cameraError || !media.hasCamera
-                      ? controlAlertClass
-                      : media.isCameraEnabled
-                        ? controlActiveClass
-                        : controlInactiveClass
-                  }
-                  disabled={!visualInputEnabled}
-                />
-                <LiveControlButton
-                  onClick={visualInputEnabled ? media.toggleScreenShare : undefined}
-                  label={
-                    visualInputEnabled
-                      ? media.isScreenShareEnabled
-                        ? "Stop sharing screen"
-                        : "Share screen"
-                      : "This avatar does not support screen sharing"
-                  }
-                  icon={<MonitorUp className="h-5 w-5" />}
-                  variantClass={
-                    !visualInputEnabled
-                      ? controlInactiveClass
-                      : media.isScreenShareEnabled
-                        ? controlShareClass
-                        : controlIdleClass
-                  }
-                  disabled={!visualInputEnabled}
-                />
                 <button
                   type="button"
                   onClick={() => void session.end()}
@@ -530,42 +390,6 @@ function RunwaySessionSurface({
                 </button>
               </div>
             </div>
-
-            <UserVideo mirror>
-              {(user) =>
-                user.hasVideo && user.trackRef && isTrackReference(user.trackRef) ? (
-                  <div
-                    className={cn(
-                      "absolute bottom-24 right-5 h-28 w-20 overflow-hidden rounded-[20px] border backdrop-blur-sm sm:bottom-28 sm:right-6",
-                      useDarkText
-                        ? "border-white/72 bg-white/44 shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
-                        : "border-white/16 bg-black/24 shadow-[0_4px_12px_rgba(0,0,0,0.16)]"
-                    )}
-                  >
-                    <VideoTrack trackRef={user.trackRef} className="h-full w-full object-cover" />
-                  </div>
-                ) : null
-              }
-            </UserVideo>
-
-            <ScreenShareVideo>
-              {(screen) =>
-                screen.isSharing && screen.trackRef && isTrackReference(screen.trackRef) ? (
-                  <div className="absolute bottom-24 left-5 z-20 w-[min(34vw,20rem)] overflow-hidden rounded-[24px] border border-white/55 bg-black/12 shadow-[0_10px_30px_rgba(15,23,42,0.18)] backdrop-blur-md sm:bottom-28 sm:left-6">
-                    <div className="flex items-center justify-between border-b border-white/18 bg-black/24 px-3 py-2 text-[11px] font-medium text-white/88 backdrop-blur-xl">
-                      <span>Shared screen</span>
-                      <span className="inline-flex items-center gap-1.5 text-white/68">
-                        <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,0.65)]" />
-                        Avatar can see this
-                      </span>
-                    </div>
-                    <div className="aspect-[16/10] bg-black/20">
-                      <VideoTrack trackRef={screen.trackRef} className="h-full w-full object-cover" />
-                    </div>
-                  </div>
-                ) : null
-              }
-            </ScreenShareVideo>
           </>
         )}
       </div>
@@ -665,8 +489,6 @@ export function RunwayLiveRoom({
             token: data.token,
             roomName: data.roomName,
           },
-          clientEventsEnabled: data.clientEventsEnabled !== false,
-          visualInputEnabled: data.visualInputEnabled !== false,
         });
       } catch (error: any) {
         if (!cancelled) {
@@ -751,12 +573,7 @@ export function RunwayLiveRoom({
                 onEnd={() => setConnection({ status: "ended" })}
                 onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
               >
-                <RunwaySessionSurface
-                character={character}
-                theme={roomTheme}
-                clientEventsEnabled={connection.clientEventsEnabled}
-                visualInputEnabled={connection.visualInputEnabled}
-              />
+                <RunwaySessionSurface character={character} theme={roomTheme} />
             </AvatarSession>
             </div>
           ) : connection.status === "connecting" ? (

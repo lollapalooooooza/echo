@@ -5,17 +5,18 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Loader2,
+  MessageCircleMore,
   Mic,
-  MoonStar,
   Pause,
   Play,
+  Radio,
   SkipForward,
-  SunMedium,
   Volume2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
+import { PodcastRunwayStage } from "@/components/podcast-runway-stage";
 
 type PodcastMessage = {
   id: string;
@@ -25,6 +26,7 @@ type PodcastMessage = {
 };
 
 type PodcastTheme = "light" | "dark";
+type PodcastMode = "runway" | "chat";
 
 function CharacterAvatar({
   character,
@@ -204,12 +206,11 @@ export default function PodcastPage() {
   const [generating, setGenerating] = useState(false);
   const [messages, setMessages] = useState<PodcastMessage[]>([]);
   const [currentSpeaker, setCurrentSpeaker] = useState<"A" | "B">("A");
-  const [theme, setTheme] = useState<PodcastTheme>("dark");
+  const [mode, setMode] = useState<PodcastMode>("chat");
 
   const transcriptRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pausedRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
   const turnCountRef = useRef(0);
   const messagesRef = useRef<PodcastMessage[]>([]);
 
@@ -234,8 +235,15 @@ export default function PodcastPage() {
       .then((r) => r.json())
       .then((chars) => {
         const list = Array.isArray(chars) ? chars : [];
-        setCharA(list.find((c: any) => c.id === charIdA) || null);
-        setCharB(list.find((c: any) => c.id === charIdB) || null);
+        const nextCharA = list.find((c: any) => c.id === charIdA) || null;
+        const nextCharB = list.find((c: any) => c.id === charIdB) || null;
+        setCharA(nextCharA);
+        setCharB(nextCharB);
+        setMode(
+          nextCharA?.runwayCharacterId && nextCharB?.runwayCharacterId
+            ? "runway"
+            : "chat"
+        );
       })
       .finally(() => setLoading(false));
   }, [charIdA, charIdB]);
@@ -392,23 +400,39 @@ export default function PodcastPage() {
     }
   };
 
-  const isLight = theme === "light";
+  const openChatBox = () => {
+    setMode("chat");
+  };
+
+  const openRunwayLive = () => {
+    setPaused(true);
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    setMode("runway");
+  };
+
+  const theme: PodcastTheme = "light";
+  const isLight = true;
+  const canUseRunwayLive = !!charA?.runwayCharacterId && !!charB?.runwayCharacterId;
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-neutral-950">
-        <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+      <div className="flex h-screen items-center justify-center bg-[#f8f6f1]">
+        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
       </div>
     );
   }
 
   if (!charA || !charB) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-neutral-950 text-center text-white/50">
-        <p className="text-sm">Select two characters from the lobby to start a podcast.</p>
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[#f8f6f1] px-6 text-center">
+        <div className="rounded-[28px] border border-white/80 bg-white/84 p-8 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)]">
+          <p className="text-sm text-slate-600">Select two characters from the lobby to start a podcast.</p>
+        </div>
         <Link
           href="/lobby"
-          className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/15"
+          className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700"
         >
           <ArrowLeft className="h-4 w-4" /> Back to lobby
         </Link>
@@ -430,52 +454,77 @@ export default function PodcastPage() {
         }
       `}</style>
 
-      {/* Header */}
-      <header
-        className={cn(
-          "flex items-center justify-between border-b px-4 py-3 sm:px-6",
-          isLight ? "border-neutral-200 bg-white/80" : "border-white/8 bg-black/40"
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <Link
-            href="/lobby"
-            className={cn(
-              "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-colors",
-              isLight
-                ? "bg-neutral-100 text-slate-600 hover:text-slate-900"
-                : "bg-white/8 text-white/50 hover:text-white/80"
-            )}
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Leave
-          </Link>
+      <header className="border-b border-border/40 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-6">
+          <div className="flex min-w-0 items-center gap-4">
+            <BrandMark href="/" size="sm" />
+            <div className="hidden h-7 w-px bg-neutral-200 md:block" />
+            <div className="hidden min-w-0 md:block">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-600">
+                Podcast Studio
+              </p>
+              <p className="truncate text-sm text-slate-500">
+                Runway live first, chat box fallback second
+              </p>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
-            <Mic className={cn("h-4 w-4", isLight ? "text-orange-600" : "text-orange-400")} />
-            <span
-              className={cn(
-                "text-[12px] font-semibold uppercase tracking-[0.2em]",
-                isLight ? "text-orange-600" : "text-orange-400"
-              )}
+            {canUseRunwayLive && (
+              <button
+                type="button"
+                onClick={() =>
+                  mode === "runway" ? openChatBox() : openRunwayLive()
+                }
+                className={cn(
+                  "inline-flex h-10 items-center gap-2 rounded-full px-4 text-[12px] font-medium transition-colors",
+                  mode === "runway"
+                    ? "bg-slate-900 text-white hover:bg-slate-700"
+                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                )}
+              >
+                {mode === "runway" ? (
+                  <>
+                    <MessageCircleMore className="h-3.5 w-3.5" />
+                    Fallback Chat
+                  </>
+                ) : (
+                  <>
+                    <Radio className="h-3.5 w-3.5" />
+                    Runway Live
+                  </>
+                )}
+              </button>
+            )}
+
+            <Link
+              href="/lobby"
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm text-slate-600 shadow-sm transition-colors hover:text-slate-900"
             >
-              Podcast Mode
-            </span>
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Leave
+            </Link>
           </div>
         </div>
-        <button
-          onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-          className={cn(
-            "inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors",
-            isLight
-              ? "bg-neutral-100 text-slate-600 hover:text-slate-900"
-              : "bg-white/8 text-white/50 hover:text-white"
-          )}
-        >
-          {isLight ? <MoonStar className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />}
-        </button>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      {mode === "runway" && canUseRunwayLive ? (
+        <PodcastRunwayStage
+          charA={charA}
+          charB={charB}
+          topic={topic}
+          onTopicChange={setTopic}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          {!canUseRunwayLive && (
+            <div className="mx-auto mt-6 w-full max-w-5xl px-6">
+              <div className="rounded-[24px] border border-amber-200 bg-amber-50/90 px-5 py-4 text-sm leading-6 text-amber-900 shadow-sm">
+                One or both characters do not have a linked Runway avatar, so the podcast opened directly in the chat box fallback.
+              </div>
+            </div>
+          )}
+
         {/* Characters stage */}
         <div
           className={cn(
@@ -541,14 +590,26 @@ export default function PodcastPage() {
                 )}
               />
             </div>
-            <button
-              onClick={handleStart}
-              disabled={!topic.trim()}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-orange-500 px-8 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              <Play className="h-4 w-4" />
-              Start Podcast
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {canUseRunwayLive && (
+                <button
+                  type="button"
+                  onClick={openRunwayLive}
+                  className="inline-flex h-12 items-center gap-2 rounded-full border border-neutral-300 bg-white px-5 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
+                >
+                  <Radio className="h-4 w-4" />
+                  Runway Live
+                </button>
+              )}
+              <button
+                onClick={handleStart}
+                disabled={!topic.trim()}
+                className="inline-flex h-12 items-center gap-2 rounded-full bg-orange-500 px-8 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                <Play className="h-4 w-4" />
+                Start Podcast
+              </button>
+            </div>
           </div>
         )}
 
@@ -633,6 +694,7 @@ export default function PodcastPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

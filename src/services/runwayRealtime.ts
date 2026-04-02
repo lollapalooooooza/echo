@@ -1,6 +1,5 @@
 import type RunwayML from "@runwayml/sdk";
 
-import { runwayClientEventTools } from "@/lib/runway-client-events";
 import { getRunwayClient } from "@/services/runwayClient";
 
 const RUNWAY_BASE_URL = "https://api.dev.runwayml.com";
@@ -24,12 +23,7 @@ export type RunwayRealtimeSessionCredentials = {
 
 export async function createRealtimeSession(
   avatarId: string,
-  maxDuration = 300,
-  options?: {
-    enableClientEvents?: boolean;
-    personality?: string;
-    startScript?: string;
-  }
+  maxDuration = 300
 ): Promise<{ id: string }> {
   const client = getRunwayClient();
   const params = {
@@ -39,9 +33,6 @@ export async function createRealtimeSession(
       avatarId,
     },
     maxDuration,
-    personality: options?.personality,
-    startScript: options?.startScript,
-    ...(options?.enableClientEvents ? { tools: runwayClientEventTools } : {}),
   };
 
   return client.realtimeSessions.create(params as any);
