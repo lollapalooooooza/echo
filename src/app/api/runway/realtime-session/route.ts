@@ -15,7 +15,8 @@ import {
 
 const DEFAULT_MAX_DURATION = 300;
 const SESSION_READY_TIMEOUT_MS = 30_000;
-const SESSION_POLL_INTERVAL_MS = 1_000;
+const INITIAL_SESSION_POLL_INTERVAL_MS = 150;
+const MAX_SESSION_POLL_INTERVAL_MS = 500;
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -127,6 +128,8 @@ export async function POST(req: NextRequest) {
       status: "NOT_READY",
     };
 
+    let nextPollDelayMs = INITIAL_SESSION_POLL_INTERVAL_MS;
+
     while (Date.now() < deadline) {
       try {
         liveSession = await getRealtimeSession(created.id);
@@ -166,7 +169,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      await wait(SESSION_POLL_INTERVAL_MS);
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+
+      await wait(Math.min(nextPollDelayMs, remainingMs));
+      nextPollDelayMs = Math.min(Math.round(nextPollDelayMs * 1.6), MAX_SESSION_POLL_INTERVAL_MS);
     }
 
     return NextResponse.json(
