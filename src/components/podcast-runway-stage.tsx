@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   Loader2,
-  MessageCircleMore,
+  Pause,
+  Play,
   Radio,
   RefreshCw,
+  RotateCcw,
   Volume2,
 } from "lucide-react";
 import { isTrackReference, useRoomContext } from "@livekit/components-react";
@@ -13,17 +22,69 @@ import {
   AvatarSession,
   AvatarVideo,
   VideoTrack,
+  useAvatar,
+  useAvatarSession,
+  useTranscription,
   type SessionCredentials,
 } from "@runwayml/avatars-react";
-import { RoomEvent } from "livekit-client";
+import { RoomEvent, Track } from "livekit-client";
 
 import { cn } from "@/lib/utils";
+
+type SpeakerId = "A" | "B";
 
 type ConnectionState =
   | { status: "connecting" }
   | { status: "ready"; credentials: SessionCredentials }
   | { status: "error"; error: string }
   | { status: "ended" };
+
+type LiveStatus = "idle" | "starting" | "active" | "paused" | "ended" | "error";
+
+type LiveTranscriptMessage = {
+  id: string;
+  speaker: SpeakerId;
+  speakerName: string;
+  content: string;
+  pending?: boolean;
+};
+
+type PodcastLiveSessionHandle = {
+  isReady: () => boolean;
+  prompt: (text: string, voiceId?: string) => Promise<void>;
+};
+
+const DEFAULT_PROMPT_VOICE_ID = "clara";
+const MAX_LIVE_TURNS = 12;
+const TURN_FINALIZE_DELAY_MS = 1600;
+
+function compactText(value: string | null | undefined) {
+  return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function truncatePromptText(value: string, maxLength = 320) {
+  const normalized = compactText(value);
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function buildOpeningPrompt(speaker: any, other: any, topic: string) {
+  return truncatePromptText(
+    `Let's begin a live podcast between ${speaker.name} and ${other.name}. ` +
+      `The shared topic is: ${topic}. ${speaker.name}, open the conversation in two or three sentences, ` +
+      `stay fully in character, and speak directly to ${other.name}.`,
+    360
+  );
+}
+
+function buildReplyPrompt(speaker: any, other: any, topic: string, previousTurn: string) {
+  return truncatePromptText(
+    `You are continuing a live podcast with ${other.name}. ` +
+      `The shared topic is: ${topic}. ${other.name} just said: "${truncatePromptText(previousTurn, 220)}". ` +
+      `Reply directly in two or three sentences, stay in character, and keep the discussion moving.`,
+    420
+  );
+}
 
 async function readResponse(response: Response) {
   const contentType = response.headers.get("content-type") || "";
@@ -39,21 +100,46 @@ async function readResponse(response: Response) {
         .replace(/<[^>]*>/g, " ")
         .replace(/\s+/g, " ")
         .trim()
-        .slice(0, 200) || `Request failed with status ${response.status}`,
+        .slice(0, 220) || `Request failed with status ${response.status}`,
   };
+}
+
+async function fetchPromptAudio(text: string, voiceId: string) {
+  const response = await fetch("/api/voice/synthesize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      voiceId,
+      text: truncatePromptText(text, 1500),
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await readResponse(response);
+    throw new Error(payload.error || "Failed to synthesize podcast prompt audio");
+  }
+
+  return response.arrayBuffer();
 }
 
 function LiveCharacterPlaceholder({
   character,
   label,
   detail,
+  active = false,
 }: {
   character: any;
   label: string;
   detail: string;
+  active?: boolean;
 }) {
   return (
-    <div className="relative flex h-full min-h-[21rem] items-center justify-center overflow-hidden rounded-[28px] border border-white/80 bg-[#f5efe3]">
+    <div
+      className={cn(
+        "relative flex h-full min-h-[21rem] items-center justify-center overflow-hidden rounded-[28px] border bg-[#f5efe3]",
+        active ? "border-orange-300 shadow-[0_0_0_1px_rgba(251,146,60,0.16)]" : "border-white/80"
+      )}
+    >
       {character.avatarUrl ? (
         <img
           src={character.avatarUrl}
@@ -65,7 +151,14 @@ function LiveCharacterPlaceholder({
       )}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.18),rgba(245,239,227,0.92))]" />
       <div className="relative z-10 flex max-w-md flex-col items-center px-6 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/76 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700 backdrop-blur-xl">
+        <div
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] backdrop-blur-xl",
+            active
+              ? "border-orange-200 bg-orange-50/92 text-orange-700"
+              : "border-white/80 bg-white/76 text-emerald-700"
+          )}
+        >
           <Loader2 className="h-4 w-4 animate-spin" />
           {label}
         </div>
@@ -81,9 +174,37 @@ function LiveCharacterPlaceholder({
   );
 }
 
-function PodcastRunwayVideoSurface({ character }: { character: any }) {
+const PodcastSessionRuntime = forwardRef<
+  PodcastLiveSessionHandle,
+  {
+    character: any;
+    active: boolean;
+    onReadyChange: (ready: boolean) => void;
+    onAvatarText: (text: string) => void;
+  }
+>(function PodcastSessionRuntime(
+  { character, active, onReadyChange, onAvatarText },
+  ref
+) {
   const room = useRoomContext();
+  const session = useAvatarSession();
+  const avatar = useAvatar();
   const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const destinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const publishedTrackRef = useRef<MediaStreamTrack | null>(null);
+  const readyRef = useRef(false);
+  const queueRef = useRef(Promise.resolve());
+  const seenEntryIdsRef = useRef(new Set<string>());
+
+  const setReadyState = useCallback(
+    (next: boolean) => {
+      if (readyRef.current === next) return;
+      readyRef.current = next;
+      onReadyChange(next);
+    },
+    [onReadyChange]
+  );
 
   useEffect(() => {
     const syncAudioPlayback = () => {
@@ -97,26 +218,169 @@ function PodcastRunwayVideoSurface({ character }: { character: any }) {
     };
   }, [room]);
 
-  async function enableAudio() {
+  const cleanupBridge = useCallback(async () => {
+    const publishedTrack = publishedTrackRef.current;
+    publishedTrackRef.current = null;
+
+    if (publishedTrack) {
+      await room.localParticipant.unpublishTrack(publishedTrack, false).catch(() => undefined);
+      publishedTrack.stop();
+    }
+
+    const context = audioContextRef.current;
+    audioContextRef.current = null;
+    destinationRef.current = null;
+    if (context) {
+      await context.close().catch(() => undefined);
+    }
+
+    setReadyState(false);
+  }, [room, setReadyState]);
+
+  const ensureAudioBridge = useCallback(async () => {
+    if (session.state !== "active") {
+      throw new Error("Runway live session is not active yet");
+    }
+
+    const AudioContextCtor =
+      typeof window !== "undefined"
+        ? window.AudioContext || (window as any).webkitAudioContext
+        : null;
+    if (!AudioContextCtor) {
+      throw new Error("This browser does not support Web Audio");
+    }
+
+    if (!audioContextRef.current) {
+      const context = new AudioContextCtor();
+      audioContextRef.current = context;
+      destinationRef.current = context.createMediaStreamDestination();
+    }
+
+    if (audioContextRef.current.state === "suspended") {
+      await audioContextRef.current.resume();
+    }
+
+    if (!publishedTrackRef.current) {
+      const mediaTrack = destinationRef.current?.stream.getAudioTracks()[0];
+      if (!mediaTrack) {
+        throw new Error("Unable to create podcast input audio track");
+      }
+
+      await room.localParticipant.publishTrack(mediaTrack, {
+        source: Track.Source.Microphone,
+      });
+      publishedTrackRef.current = mediaTrack;
+      setReadyState(true);
+    }
+
+    return {
+      audioContext: audioContextRef.current,
+      destination: destinationRef.current,
+    };
+  }, [room, session.state, setReadyState]);
+
+  useEffect(() => {
+    if (session.state === "active") {
+      void ensureAudioBridge().catch((error) => {
+        console.error("[PodcastRunwayStage] Failed to initialize live audio bridge:", error);
+        setReadyState(false);
+      });
+      return;
+    }
+
+    setReadyState(false);
+  }, [ensureAudioBridge, session.state, setReadyState]);
+
+  useEffect(() => {
+    return () => {
+      void cleanupBridge();
+    };
+  }, [cleanupBridge]);
+
+  useTranscription((entry) => {
+    const avatarIdentity = avatar.participant?.identity;
+    if (!entry.final || !avatarIdentity || entry.participantIdentity !== avatarIdentity) return;
+    if (seenEntryIdsRef.current.has(entry.id)) return;
+
+    seenEntryIdsRef.current.add(entry.id);
+    const text = compactText(entry.text);
+    if (text) {
+      onAvatarText(text);
+    }
+  });
+
+  const playPrompt = useCallback(
+    async (text: string, voiceId?: string) => {
+      const normalized = compactText(text);
+      if (!normalized) return;
+
+      const bridge = await ensureAudioBridge();
+      const requestedVoiceId = voiceId || DEFAULT_PROMPT_VOICE_ID;
+      let audioBuffer: ArrayBuffer;
+
+      try {
+        audioBuffer = await fetchPromptAudio(normalized, requestedVoiceId);
+      } catch (error) {
+        if (requestedVoiceId === DEFAULT_PROMPT_VOICE_ID) {
+          throw error;
+        }
+
+        audioBuffer = await fetchPromptAudio(normalized, DEFAULT_PROMPT_VOICE_ID);
+      }
+
+      const decoded = await bridge.audioContext.decodeAudioData(audioBuffer.slice(0));
+
+      await new Promise<void>((resolve) => {
+        const source = bridge.audioContext.createBufferSource();
+        const gain = bridge.audioContext.createGain();
+        gain.gain.value = 1;
+        source.buffer = decoded;
+        source.connect(gain);
+        gain.connect(bridge.destination!);
+        source.onended = () => {
+          source.disconnect();
+          gain.disconnect();
+          resolve();
+        };
+        source.start(0);
+      });
+    },
+    [ensureAudioBridge]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      isReady: () => readyRef.current,
+      prompt: (text: string, voiceId?: string) => {
+        const run = queueRef.current.then(() => playPrompt(text, voiceId));
+        queueRef.current = run.catch(() => undefined);
+        return run;
+      },
+    }),
+    [playPrompt]
+  );
+
+  async function enableAudioPlayback() {
     try {
       await room.startAudio();
       setCanPlaybackAudio(true);
     } catch {
-      // The button stays visible if playback remains blocked.
+      // keep the button visible if playback is still blocked
     }
   }
 
   return (
     <div className="relative h-full min-h-[21rem] overflow-hidden rounded-[28px]">
       <AvatarVideo>
-        {(avatar) => {
+        {(status) => {
           const hasVideoTrack =
-            avatar.status === "ready" && isTrackReference(avatar.videoTrackRef);
+            status.status === "ready" && isTrackReference(status.videoTrackRef);
 
           if (hasVideoTrack) {
             return (
               <VideoTrack
-                trackRef={avatar.videoTrackRef}
+                trackRef={status.videoTrackRef}
                 className="h-full w-full object-cover"
               />
             );
@@ -125,16 +389,24 @@ function PodcastRunwayVideoSurface({ character }: { character: any }) {
           return (
             <LiveCharacterPlaceholder
               character={character}
-              label={avatar.status === "connecting" ? "Connecting" : "Preparing"}
-              detail="Runway is warming this live host so the podcast stage is ready when you need it."
+              label={status.status === "connecting" ? "Connecting" : "Preparing"}
+              detail="Runway is bringing this live host onto the podcast stage."
+              active={active}
             />
           );
         }}
       </AvatarVideo>
 
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between p-4">
-        <div className="rounded-full bg-white/82 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700 shadow-sm backdrop-blur-xl">
-          Runway Live
+        <div
+          className={cn(
+            "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] shadow-sm backdrop-blur-xl",
+            active
+              ? "bg-orange-50/94 text-orange-700"
+              : "bg-white/82 text-emerald-700"
+          )}
+        >
+          {active ? "Speaking" : "Runway Live"}
         </div>
         <div className="rounded-full bg-slate-950/78 px-3 py-1 text-[11px] font-medium text-white backdrop-blur-xl">
           {character.name}
@@ -145,7 +417,7 @@ function PodcastRunwayVideoSurface({ character }: { character: any }) {
         <div className="absolute inset-x-0 bottom-5 z-20 flex justify-center px-4">
           <button
             type="button"
-            onClick={() => void enableAudio()}
+            onClick={() => void enableAudioPlayback()}
             className="inline-flex items-center gap-2 rounded-full bg-white/88 px-4 py-2 text-[12px] font-medium text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors hover:bg-white"
           >
             <Volume2 className="h-3.5 w-3.5" />
@@ -155,15 +427,47 @@ function PodcastRunwayVideoSurface({ character }: { character: any }) {
       )}
     </div>
   );
-}
+});
 
-function PodcastRunwayCard({ character }: { character: any }) {
+const PodcastSessionCard = forwardRef<
+  PodcastLiveSessionHandle,
+  {
+    speaker: SpeakerId;
+    character: any;
+    active: boolean;
+    onReadyChange: (speaker: SpeakerId, ready: boolean) => void;
+    onAvatarText: (speaker: SpeakerId, text: string) => void;
+  }
+>(function PodcastSessionCard(
+  { speaker, character, active, onReadyChange, onAvatarText },
+  ref
+) {
   const [attempt, setAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>(
-    character?.runwayCharacterId ? { status: "connecting" } : { status: "error", error: "No linked Runway avatar" }
+    character?.runwayCharacterId
+      ? { status: "connecting" }
+      : { status: "error", error: "No linked Runway avatar" }
+  );
+  const runtimeRef = useRef<PodcastLiveSessionHandle | null>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      isReady: () =>
+        connection.status === "ready" && !!runtimeRef.current?.isReady(),
+      prompt: async (text: string, voiceId?: string) => {
+        if (connection.status !== "ready" || !runtimeRef.current?.isReady()) {
+          throw new Error(`${character.name} is still warming up`);
+        }
+        await runtimeRef.current.prompt(text, voiceId);
+      },
+    }),
+    [character.name, connection.status]
   );
 
   useEffect(() => {
+    onReadyChange(speaker, false);
+
     if (!character?.runwayCharacterId) {
       setConnection({
         status: "error",
@@ -208,6 +512,7 @@ function PodcastRunwayCard({ character }: { character: any }) {
         });
       } catch (error: any) {
         if (cancelled) return;
+        onReadyChange(speaker, false);
         setConnection({
           status: "error",
           error: error.message || "Failed to start Runway live session",
@@ -219,11 +524,19 @@ function PodcastRunwayCard({ character }: { character: any }) {
 
     return () => {
       cancelled = true;
+      onReadyChange(speaker, false);
     };
-  }, [attempt, character?.id, character?.runwayCharacterId]);
+  }, [attempt, character?.id, character?.runwayCharacterId, onReadyChange, speaker]);
 
   return (
-    <section className="flex min-h-[30rem] flex-col rounded-[32px] border border-white/80 bg-white/82 p-3 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl">
+    <section
+      className={cn(
+        "flex min-h-[30rem] flex-col rounded-[32px] border bg-white/82 p-3 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl transition-all duration-300",
+        active
+          ? "border-orange-300 shadow-[0_28px_90px_-48px_rgba(251,146,60,0.36)]"
+          : "border-white/80"
+      )}
+    >
       <div className="flex items-center justify-between gap-3 px-2 pb-3 pt-1">
         <div className="flex min-w-0 items-center gap-3">
           <div className="h-10 w-10 overflow-hidden rounded-2xl border border-amber-200/70 bg-amber-50">
@@ -251,8 +564,21 @@ function PodcastRunwayCard({ character }: { character: any }) {
             </p>
           </div>
         </div>
-        <div className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-          Live
+        <div
+          className={cn(
+            "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+            connection.status === "ready"
+              ? "bg-emerald-50 text-emerald-700"
+              : connection.status === "connecting"
+              ? "bg-amber-50 text-amber-700"
+              : "bg-rose-50 text-rose-700"
+          )}
+        >
+          {connection.status === "ready"
+            ? "Live"
+            : connection.status === "connecting"
+            ? "Warming"
+            : "Issue"}
         </div>
       </div>
 
@@ -263,22 +589,32 @@ function PodcastRunwayCard({ character }: { character: any }) {
             credentials={connection.credentials}
             audio={false}
             video={false}
-            onEnd={() => setConnection({ status: "ended" })}
-            onError={(error) =>
+            onEnd={() => {
+              onReadyChange(speaker, false);
+              setConnection({ status: "ended" });
+            }}
+            onError={(error) => {
+              onReadyChange(speaker, false);
               setConnection({
                 status: "error",
-                error:
-                  error.message || "Runway live session ended unexpectedly",
-              })
-            }
+                error: error.message || "Runway live session ended unexpectedly",
+              });
+            }}
           >
-            <PodcastRunwayVideoSurface character={character} />
+            <PodcastSessionRuntime
+              ref={runtimeRef}
+              character={character}
+              active={active}
+              onReadyChange={(ready) => onReadyChange(speaker, ready)}
+              onAvatarText={(text) => onAvatarText(speaker, text)}
+            />
           </AvatarSession>
         ) : connection.status === "connecting" ? (
           <LiveCharacterPlaceholder
             character={character}
             label="Starting session"
-            detail="Fetching fresh Runway credentials and bringing this character onto the podcast stage."
+            detail="Fetching fresh Runway credentials and bringing this character online."
+            active={active}
           />
         ) : (
           <div className="flex h-full min-h-[21rem] flex-col items-center justify-center rounded-[28px] border border-dashed border-amber-200 bg-[#fbf8f1] px-6 text-center">
@@ -290,7 +626,7 @@ function PodcastRunwayCard({ character }: { character: any }) {
             </p>
             <p className="mt-3 max-w-sm text-sm leading-6 text-slate-600">
               {connection.status === "ended"
-                ? "This Runway host finished its current session. Start a fresh one when you are ready."
+                ? "This live host finished its current session. Start a fresh one to continue the podcast."
                 : connection.error}
             </p>
             <button
@@ -306,6 +642,44 @@ function PodcastRunwayCard({ character }: { character: any }) {
       </div>
     </section>
   );
+});
+
+function LiveTranscriptBubble({
+  message,
+}: {
+  message: LiveTranscriptMessage;
+}) {
+  const alignRight = message.speaker === "B";
+
+  return (
+    <div
+      className={cn(
+        "flex",
+        alignRight ? "justify-end" : "justify-start"
+      )}
+    >
+      <div
+        className={cn(
+          "max-w-[85%] rounded-[24px] border px-4 py-3 shadow-sm",
+          alignRight
+            ? "border-orange-200 bg-orange-50"
+            : "border-neutral-200 bg-white"
+        )}
+      >
+        <p
+          className={cn(
+            "text-[11px] font-semibold uppercase tracking-[0.18em]",
+            alignRight ? "text-orange-700/75" : "text-slate-400"
+          )}
+        >
+          {message.speakerName}
+        </p>
+        <p className="mt-1.5 text-sm leading-6 text-slate-700">
+          {message.content || (message.pending ? "Listening…" : "…")}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export function PodcastRunwayStage({
@@ -313,22 +687,323 @@ export function PodcastRunwayStage({
   charB,
   topic,
   onTopicChange,
-  onUseFallback,
 }: {
   charA: any;
   charB: any;
   topic: string;
   onTopicChange: (value: string) => void;
-  onUseFallback?: () => void;
 }) {
+  const sessionARef = useRef<PodcastLiveSessionHandle | null>(null);
+  const sessionBRef = useRef<PodcastLiveSessionHandle | null>(null);
+  const currentTurnRef = useRef<{
+    speaker: SpeakerId;
+    messageId: string;
+    text: string;
+  } | null>(null);
+  const queuedPromptRef = useRef<{
+    speaker: SpeakerId;
+    prompt: string;
+    voiceId: string;
+    token: number;
+  } | null>(null);
+  const silenceTimerRef = useRef<number | null>(null);
+  const conversationTokenRef = useRef(0);
+  const turnCountRef = useRef(0);
+  const statusRef = useRef<LiveStatus>("idle");
+
+  const [sessionReady, setSessionReady] = useState<{ A: boolean; B: boolean }>({
+    A: false,
+    B: false,
+  });
+  const [messages, setMessages] = useState<LiveTranscriptMessage[]>([]);
+  const [status, setStatus] = useState<LiveStatus>("idle");
+  const [activeSpeaker, setActiveSpeaker] = useState<SpeakerId | null>(null);
+  const [liveError, setLiveError] = useState("");
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      window.clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
+  const resetConversation = useCallback(
+    (nextStatus: LiveStatus) => {
+      conversationTokenRef.current += 1;
+      clearSilenceTimer();
+      queuedPromptRef.current = null;
+      currentTurnRef.current = null;
+      turnCountRef.current = 0;
+      setActiveSpeaker(null);
+      setStatus(nextStatus);
+    },
+    [clearSilenceTimer]
+  );
+
+  useEffect(() => {
+    return () => {
+      resetConversation("idle");
+    };
+  }, [resetConversation]);
+
+  const getCharacter = useCallback(
+    (speaker: SpeakerId) => (speaker === "A" ? charA : charB),
+    [charA, charB]
+  );
+
+  const getSessionHandle = useCallback(
+    (speaker: SpeakerId) => (speaker === "A" ? sessionARef.current : sessionBRef.current),
+    []
+  );
+
+  const handleReadyChange = useCallback((speaker: SpeakerId, ready: boolean) => {
+    setSessionReady((current) => {
+      if (current[speaker] === ready) return current;
+      return { ...current, [speaker]: ready };
+    });
+  }, []);
+
+  const speakPromptTo = useCallback(
+    async (speaker: SpeakerId, prompt: string, voiceId: string, token: number) => {
+      if (token !== conversationTokenRef.current) return;
+
+      const handle = getSessionHandle(speaker);
+      const character = getCharacter(speaker);
+      if (!handle?.isReady()) {
+        throw new Error(`${character.name} is still warming up`);
+      }
+
+      const messageId = `live-${speaker}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      currentTurnRef.current = {
+        speaker,
+        messageId,
+        text: "",
+      };
+
+      setActiveSpeaker(speaker);
+      setMessages((current) => [
+        ...current,
+        {
+          id: messageId,
+          speaker,
+          speakerName: character.name,
+          content: "",
+          pending: true,
+        },
+      ]);
+
+      await handle.prompt(prompt, voiceId);
+      if (token !== conversationTokenRef.current) return;
+
+      if (statusRef.current !== "paused") {
+        setStatus("active");
+      }
+    },
+    [getCharacter, getSessionHandle]
+  );
+
+  const finalizeTurn = useCallback(
+    async (speaker: SpeakerId, token: number) => {
+      if (token !== conversationTokenRef.current) return;
+
+      const currentTurn = currentTurnRef.current;
+      if (!currentTurn || currentTurn.speaker !== speaker) return;
+
+      clearSilenceTimer();
+
+      const text = compactText(currentTurn.text);
+      const completedSpeaker = getCharacter(speaker);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === currentTurn.messageId
+            ? {
+                ...message,
+                content: text || "…",
+                pending: false,
+              }
+            : message
+        )
+      );
+
+      currentTurnRef.current = null;
+      setActiveSpeaker(null);
+
+      if (!text) {
+        setStatus("error");
+        setLiveError(`${completedSpeaker.name} did not return a usable live transcript.`);
+        return;
+      }
+
+      turnCountRef.current += 1;
+      if (turnCountRef.current >= MAX_LIVE_TURNS) {
+        setStatus("ended");
+        return;
+      }
+
+      const nextSpeaker = speaker === "A" ? "B" : "A";
+      const nextPrompt = buildReplyPrompt(
+        getCharacter(nextSpeaker),
+        completedSpeaker,
+        topic,
+        text
+      );
+      const nextVoiceId = DEFAULT_PROMPT_VOICE_ID;
+
+      if (statusRef.current === "paused") {
+        queuedPromptRef.current = {
+          speaker: nextSpeaker,
+          prompt: nextPrompt,
+          voiceId: nextVoiceId,
+          token,
+        };
+        return;
+      }
+
+      try {
+        await speakPromptTo(nextSpeaker, nextPrompt, nextVoiceId, token);
+      } catch (error: any) {
+        if (token !== conversationTokenRef.current) return;
+        setStatus("error");
+        setLiveError(error.message || "Failed to continue the Runway live podcast");
+      }
+    },
+    [clearSilenceTimer, getCharacter, speakPromptTo, topic]
+  );
+
+  const handleAvatarText = useCallback(
+    (speaker: SpeakerId, text: string) => {
+      if (!conversationTokenRef.current) return;
+
+      const currentTurn = currentTurnRef.current;
+      if (!currentTurn || currentTurn.speaker !== speaker) return;
+
+      const nextText = compactText([currentTurn.text, text].filter(Boolean).join(" "));
+      currentTurnRef.current = {
+        ...currentTurn,
+        text: nextText,
+      };
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === currentTurn.messageId
+            ? {
+                ...message,
+                content: nextText,
+                pending: true,
+              }
+            : message
+        )
+      );
+
+      clearSilenceTimer();
+      const token = conversationTokenRef.current;
+      silenceTimerRef.current = window.setTimeout(() => {
+        void finalizeTurn(speaker, token);
+      }, TURN_FINALIZE_DELAY_MS);
+
+      if (statusRef.current !== "paused") {
+        setStatus("active");
+      }
+    },
+    [clearSilenceTimer, finalizeTurn]
+  );
+
+  const startLivePodcast = useCallback(async () => {
+    const normalizedTopic = compactText(topic);
+    if (!normalizedTopic) return;
+
+    if (!sessionReady.A || !sessionReady.B) {
+      setLiveError("Both Runway live hosts need to be ready before the podcast can start.");
+      return;
+    }
+
+    const token = conversationTokenRef.current + 1;
+    conversationTokenRef.current = token;
+    clearSilenceTimer();
+    queuedPromptRef.current = null;
+    currentTurnRef.current = null;
+    turnCountRef.current = 0;
+
+    setMessages([]);
+    setLiveError("");
+    setActiveSpeaker("A");
+    setStatus("starting");
+
+    try {
+      await speakPromptTo(
+        "A",
+        buildOpeningPrompt(charA, charB, normalizedTopic),
+        DEFAULT_PROMPT_VOICE_ID,
+        token
+      );
+    } catch (error: any) {
+      if (token !== conversationTokenRef.current) return;
+      setStatus("error");
+      setLiveError(error.message || "Failed to start the Runway live podcast");
+    }
+  }, [charA, charB, clearSilenceTimer, sessionReady.A, sessionReady.B, speakPromptTo, topic]);
+
+  const togglePaused = useCallback(async () => {
+    if (statusRef.current === "paused") {
+      setStatus("active");
+      const queuedPrompt = queuedPromptRef.current;
+      queuedPromptRef.current = null;
+      if (!queuedPrompt) return;
+
+      try {
+        await speakPromptTo(
+          queuedPrompt.speaker,
+          queuedPrompt.prompt,
+          queuedPrompt.voiceId,
+          queuedPrompt.token
+        );
+      } catch (error: any) {
+        if (queuedPrompt.token !== conversationTokenRef.current) return;
+        setStatus("error");
+        setLiveError(error.message || "Failed to resume the Runway live podcast");
+      }
+      return;
+    }
+
+    if (statusRef.current === "starting" || statusRef.current === "active") {
+      setStatus("paused");
+    }
+  }, [speakPromptTo]);
+
+  const restartLivePodcast = useCallback(() => {
+    void startLivePodcast();
+  }, [startLivePodcast]);
+
+  const liveReady = sessionReady.A && sessionReady.B;
+  const liveStatusLabel =
+    !liveReady
+      ? "Warming live hosts"
+      : status === "idle"
+      ? "Ready to start"
+      : status === "starting"
+      ? "Injecting opening prompt"
+      : status === "active"
+      ? activeSpeaker
+        ? `${getCharacter(activeSpeaker).name} is speaking`
+        : "Listening for the next turn"
+      : status === "paused"
+      ? "Podcast paused"
+      : status === "ended"
+      ? "Podcast complete"
+      : "Live orchestration error";
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-6 pb-6 pt-6">
       <div className="mb-6 rounded-[32px] border border-white/80 bg-white/84 p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl sm:p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
               <Radio className="h-3.5 w-3.5" />
-              Default host mode
+              Runway live default mode
             </div>
             <h1
               className="mt-4 text-[clamp(2rem,4vw,3.2rem)] font-semibold tracking-[-0.04em] text-slate-950"
@@ -337,7 +1012,7 @@ export function PodcastRunwayStage({
               {charA.name} and {charB.name}
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-7 text-slate-600 sm:text-[15px]">
-              Runway live sessions are the default podcast host layer now. Keep both characters warm here, then switch to the chat box fallback whenever you want the automated back-and-forth transcript on a specific topic.
+              Both characters are hosted in real Runway live sessions below. Start the podcast and the system will relay turns between the two avatars so the conversation stays on the live stage.
             </p>
           </div>
 
@@ -345,63 +1020,151 @@ export function PodcastRunwayStage({
             <label className="mb-2 block text-[12px] font-medium uppercase tracking-[0.16em] text-slate-500">
               Discussion topic
             </label>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                value={topic}
-                onChange={(event) => onTopicChange(event.target.value)}
-                placeholder="e.g. The future of AI in education..."
-                className="h-12 w-full rounded-2xl border border-neutral-300 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
-              />
-              {onUseFallback && (
-                <button
-                  type="button"
-                  onClick={onUseFallback}
-                  className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-slate-900 px-5 text-sm font-medium text-white transition-colors hover:bg-slate-700"
-                >
-                  <MessageCircleMore className="h-4 w-4" />
-                  Open Chat Box
-                </button>
-              )}
-            </div>
+            <input
+              value={topic}
+              onChange={(event) => onTopicChange(event.target.value)}
+              placeholder="e.g. The future of AI in education..."
+              className="h-12 w-full rounded-2xl border border-neutral-300 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
+            />
             <p className="mt-2 text-[12px] leading-5 text-slate-500">
-              The topic is kept here so you can jump into the fallback chat box without retyping it.
+              The chat box remains the fallback mode in the top-right toggle. This screen is the live Runway version.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-5 xl:grid-cols-[minmax(0,1fr)_22rem_minmax(0,1fr)]">
-        <PodcastRunwayCard character={charA} />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem_minmax(0,1fr)]">
+        <PodcastSessionCard
+          ref={sessionARef}
+          speaker="A"
+          character={charA}
+          active={activeSpeaker === "A"}
+          onReadyChange={handleReadyChange}
+          onAvatarText={handleAvatarText}
+        />
 
         <aside className="flex flex-col justify-between rounded-[32px] border border-amber-200/70 bg-[linear-gradient(160deg,#fff7e2_0%,#fffdf7_58%,#ffffff_100%)] p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.42)]">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/86 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 shadow-sm">
               <Volume2 className="h-3.5 w-3.5" />
-              Podcast shell
+              Live orchestration
             </div>
             <h2
               className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-slate-950"
               style={{ fontFamily: "var(--font-display)" }}
             >
-              Live first, chat as backup
+              Two avatars, one live conversation
             </h2>
             <p className="mt-3 text-sm leading-7 text-slate-600">
-              This stage keeps both linked Runway avatars online in a light-weight layout that matches the rest of EchoNest. The chat box remains available as the fallback if you want the text-and-audio podcast generator.
+              The live stage keeps both Runway hosts online and relays turn prompts between them. Everything below is light-mode by default so it stays consistent with the rest of EchoNest.
             </p>
           </div>
 
-          <div className="mt-6 rounded-[28px] border border-white/90 bg-white/80 p-4 shadow-sm">
+          <div className="mt-6 rounded-[28px] border border-white/90 bg-white/82 p-4 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Current topic
+              Live status
             </p>
-            <p className="mt-2 text-sm leading-6 text-slate-700">
-              {topic.trim() || "No topic set yet. Add one above so the chat box fallback is ready when you switch."}
+            <p className="mt-2 text-sm font-medium text-slate-800">{liveStatusLabel}</p>
+            <p className="mt-2 text-[12px] leading-5 text-slate-500">
+              Turns completed: {turnCountRef.current} / {MAX_LIVE_TURNS}
             </p>
+
+            {liveError && (
+              <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] leading-5 text-rose-700">
+                {liveError}
+              </p>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void startLivePodcast()}
+                disabled={!compactText(topic) || !liveReady || status === "starting"}
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {status === "starting" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {status === "active" || status === "paused" ? "Restart live podcast" : "Start live podcast"}
+              </button>
+
+              {(status === "starting" || status === "active" || status === "paused") && (
+                <button
+                  type="button"
+                  onClick={() => void togglePaused()}
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
+                >
+                  {status === "paused" ? (
+                    <>
+                      <Play className="h-4 w-4" />
+                      Resume
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="h-4 w-4" />
+                      Pause
+                    </>
+                  )}
+                </button>
+              )}
+
+              {(status === "ended" || status === "error") && (
+                <button
+                  type="button"
+                  onClick={restartLivePodcast}
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Restart
+                </button>
+              )}
+            </div>
           </div>
         </aside>
 
-        <PodcastRunwayCard character={charB} />
+        <PodcastSessionCard
+          ref={sessionBRef}
+          speaker="B"
+          character={charB}
+          active={activeSpeaker === "B"}
+          onReadyChange={handleReadyChange}
+          onAvatarText={handleAvatarText}
+        />
       </div>
+
+      <section className="mt-6 min-h-0 flex-1 rounded-[32px] border border-white/80 bg-white/84 p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Live transcript
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              This transcript is driven by the two active Runway sessions, not the fallback chat box.
+            </p>
+          </div>
+          {activeSpeaker && (
+            <div className="rounded-full bg-orange-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-700">
+              {getCharacter(activeSpeaker).name} live
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 min-h-[14rem] space-y-4 overflow-y-auto pr-1">
+          {messages.length > 0 ? (
+            messages.map((message) => (
+              <LiveTranscriptBubble key={message.id} message={message} />
+            ))
+          ) : (
+            <div className="flex min-h-[14rem] items-center justify-center rounded-[28px] border border-dashed border-neutral-200 bg-[#faf7f0] px-6 text-center">
+              <p className="max-w-lg text-sm leading-7 text-slate-500">
+                Start the live podcast to watch both Runway avatars talk across the stage and stream their transcript here in real time.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

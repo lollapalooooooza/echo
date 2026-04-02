@@ -486,7 +486,7 @@ export default function PodcastPage() {
                 {mode === "runway" ? (
                   <>
                     <MessageCircleMore className="h-3.5 w-3.5" />
-                    Chat Box
+                    Fallback Chat
                   </>
                 ) : (
                   <>
@@ -514,7 +514,6 @@ export default function PodcastPage() {
           charB={charB}
           topic={topic}
           onTopicChange={setTopic}
-          onUseFallback={openChatBox}
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
