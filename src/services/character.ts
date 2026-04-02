@@ -11,7 +11,7 @@ import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
 import { createRunwayAvatar } from "@/services/runwayAvatar";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 import { PRESET_VOICES } from "@/services/voiceService";
-import { DEFAULT_RUNWAY_LIVE_VOICE_PRESET, inferRunwayLiveVoicePreset } from "@/services/runwayVoice";
+import { DEFAULT_RUNWAY_LIVE_VOICE_PRESET, normalizeRunwayLiveVoicePreset } from "@/services/runwayVoice";
 
 // ── Runway API Configuration ─────────────────────────────────
 
@@ -129,16 +129,9 @@ export async function createCharacter(input: CreateCharacterInput) {
   const existing = await db.character.findUnique({ where: { slug } });
   if (existing) throw new Error("A character with this name already exists");
 
-  const { voiceDbId, voice } = await resolveVoiceSelection(input.userId, input.voiceId, input.voiceName);
+  const { voiceDbId } = await resolveVoiceSelection(input.userId, input.voiceId, input.voiceName);
   const runwayVoicePreset =
-    input.runwayVoicePreset ||
-    inferRunwayLiveVoicePreset({
-      voiceId: voice?.elevenLabsVoiceId || input.voiceId,
-      voiceName: voice?.name || input.voiceName,
-      tone: input.personalityTone,
-      bio: input.bio,
-    }) ||
-    DEFAULT_RUNWAY_LIVE_VOICE_PRESET;
+    normalizeRunwayLiveVoicePreset(input.runwayVoicePreset) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET;
 
   // Create Runway avatar if needed
   let runwayCharacterId = input.runwayCharacterId?.trim() || null;

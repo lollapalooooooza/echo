@@ -444,7 +444,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
           <div>
             <h3 className="text-sm font-semibold">Character Voice</h3>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              Choose a preset or one of your cloned voices. EchoNest uses this voice for synthesized speech and widget playback. Live sessions host the existing Runway avatar as-is; Echo only syncs voice changes back to Runway when you explicitly change settings here and click Save.
+              Choose a preset or one of your cloned voices. Echo uses this voice for synthesized speech, fallback chat, and widget playback only. Live sessions keep using the linked Runway avatar exactly as configured in Runway.
             </p>
           </div>
 
@@ -462,7 +462,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
         <div className="rounded-xl border border-border bg-white p-5 space-y-3">
           <h3 className="text-sm font-semibold">Runway Live Character</h3>
-          <p className="text-[13px] text-muted-foreground">Manage the real-time Runway avatar used for live sessions and instant face-to-face conversations.</p>
+          <p className="text-[13px] text-muted-foreground">Manage the real-time Runway avatar used for live sessions. Echo treats linked Runway avatars as read-only and will not overwrite their voice when you connect or save this character.</p>
           <div className="rounded-lg border border-border bg-muted/20 p-3 text-[13px]">
             <p><span className="font-medium">Character ID:</span> {char.runwayCharacterId || "Not configured"}</p>
             <p className="mt-1">
@@ -493,7 +493,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
           </div>
           {!char.avatarUrl && <p className="text-[11px] text-amber-600">Upload a character image to generate a Runway live character.</p>}
           {char.runwayCharacterId && Array.isArray(runwayAvatar?.documentIds) && runwayAvatar.documentIds.length === 0 && (
-            <p className="text-[11px] text-amber-600">Runway still shows zero attached knowledge documents for this avatar. Save the character again or regenerate the avatar to resync its knowledge.</p>
+            <p className="text-[11px] text-amber-600">Runway still shows zero attached knowledge documents for this avatar. Echo does not push knowledge updates onto an already linked Runway avatar; attach docs in Runway or generate a new avatar in Echo if you need Runway-side knowledge.</p>
           )}
           {runwayAvatarStatus === "FAILED" && <p className="text-[11px] text-amber-600">Runway marked this avatar as failed. Regenerate it to restore live sessions.</p>}
         </div>

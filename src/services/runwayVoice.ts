@@ -178,6 +178,11 @@ export function isRunwayLiveVoicePreset(value?: string | null): value is RunwayL
   return !!value && RUNWAY_PRESET_SET.has(value);
 }
 
+export function normalizeRunwayLiveVoicePreset(value?: string | null): RunwayLiveVoicePreset | null {
+  const normalizedValue = normalize(value);
+  return isRunwayLiveVoicePreset(normalizedValue) ? normalizedValue : null;
+}
+
 export function inferRunwayLiveVoicePreset(input: {
   voiceId?: string | null;
   voiceName?: string | null;
