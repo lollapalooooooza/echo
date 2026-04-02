@@ -83,6 +83,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Upload a character image before generating a Runway avatar" }, { status: 400 });
   }
 
+  if (character.runwayCharacterId?.trim() && body?.forceRegenerate !== true) {
+    return NextResponse.json(
+      {
+        error: "This character is already linked to an existing Runway avatar. Echo will not replace it automatically.",
+        runwayCharacterId: character.runwayCharacterId.trim(),
+      },
+      { status: 409 }
+    );
+  }
+
   try {
     let preservedVoice = null;
     if (character.runwayCharacterId?.trim()) {

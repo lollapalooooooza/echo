@@ -8,10 +8,7 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
-import { createRunwayAvatar } from "@/services/runwayAvatar";
-import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 import { PRESET_VOICES } from "@/services/voiceService";
-import { DEFAULT_RUNWAY_LIVE_VOICE_PRESET, normalizeRunwayLiveVoicePreset } from "@/services/runwayVoice";
 
 // ── Runway API Configuration ─────────────────────────────────
 
@@ -130,29 +127,7 @@ export async function createCharacter(input: CreateCharacterInput) {
   if (existing) throw new Error("A character with this name already exists");
 
   const { voiceDbId } = await resolveVoiceSelection(input.userId, input.voiceId, input.voiceName);
-  const runwayVoicePreset =
-    normalizeRunwayLiveVoicePreset(input.runwayVoicePreset) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET;
-
-  // Create Runway avatar if needed
-  let runwayCharacterId = input.runwayCharacterId?.trim() || null;
-  let createdRunwayAvatarId: string | null = null;
-  if (!runwayCharacterId && input.avatarUrl && env.RUNWAY_API_KEY) {
-    try {
-      const avatar = await createRunwayAvatar({
-        name: input.name,
-        bio: input.bio,
-        greeting: input.greeting,
-        personalityTone: input.personalityTone,
-        avatarUrl: input.avatarUrl,
-        voicePreset: runwayVoicePreset,
-      });
-      runwayCharacterId = avatar.id;
-      createdRunwayAvatarId = avatar.id;
-    } catch (err: any) {
-      console.error("[Character] Runway avatar creation failed:", err.message);
-      // Don't block character creation if Runway fails
-    }
-  }
+  const runwayCharacterId = input.runwayCharacterId?.trim() || null;
 
   // Create the character record
   const character = await db.character.create({
@@ -177,16 +152,6 @@ export async function createCharacter(input: CreateCharacterInput) {
   // Link knowledge sources if provided
   if (input.knowledgeSourceIds?.length) {
     await linkKnowledgeSources(character.id, input.knowledgeSourceIds);
-  }
-
-  if (createdRunwayAvatarId && env.RUNWAY_API_KEY) {
-    try {
-      const linkedSourceIds = await getLinkedSourceIds(character.id);
-      await syncRunwayKnowledgeToAvatar(createdRunwayAvatarId, input.userId, linkedSourceIds);
-      console.log(`[Character] Synced Runway knowledge to avatar ${createdRunwayAvatarId}`);
-    } catch (err: any) {
-      console.error("[Character] Runway knowledge sync failed:", err.message);
-    }
   }
 
   return character;

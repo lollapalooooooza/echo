@@ -276,7 +276,7 @@ export default function NewCharacterPage() {
             <input value={form.runwayCharacterId} onChange={(e) => set("runwayCharacterId", e.target.value)}
               placeholder="Optional existing avat_xxx"
               className="h-9 w-full rounded-lg border border-border px-3 text-sm outline-none focus:border-foreground transition-colors" />
-            <p className="mt-1 text-[11px] text-muted-foreground">Leave blank to auto-create from the uploaded image with Echo&apos;s default Runway preset. If you link an existing Runway avatar here, Echo will use that ID as-is and will not overwrite its voice.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">Paste an existing Runway avatar ID to use it as-is. If you leave this blank, Echo will create the character without any Runway avatar attached; you can generate one later from the edit page if you want a brand-new Runway avatar.</p>
           </Field>
         </Section>
 
