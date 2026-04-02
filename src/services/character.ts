@@ -8,7 +8,7 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
-import { createRunwayAvatar } from "@/services/runwayAvatar";
+import { createRunwayAvatar, updateRunwayAvatar } from "@/services/runwayAvatar";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 import { PRESET_VOICES } from "@/services/voiceService";
 import { DEFAULT_RUNWAY_LIVE_VOICE_PRESET, inferRunwayLiveVoicePreset } from "@/services/runwayVoice";
@@ -208,6 +208,32 @@ export async function updateCharacter(
       ? { voiceDbId: undefined, voice: char.voice || null }
       : await resolveVoiceSelection(userId, updates.voiceId, updates.voiceName);
 
+  const nextName = updates.name ?? char.name;
+  const nextBio = updates.bio ?? char.bio;
+  const nextGreeting = updates.greeting ?? char.greeting;
+  const nextPersonalityTone = updates.personalityTone ?? char.personalityTone;
+  const nextAvatarUrl =
+    updates.avatarUrl === undefined ? char.avatarUrl : updates.avatarUrl?.trim() || null;
+  const nextVoice = updates.voiceId === undefined ? char.voice || null : resolvedVoice.voice || null;
+  const nextRunwayCharacterId =
+    updates.runwayCharacterId === undefined ? char.runwayCharacterId : updates.runwayCharacterId?.trim() || null;
+  const currentVoiceElevenLabsId = char.voice?.elevenLabsVoiceId || "";
+  const nextVoiceElevenLabsId = nextVoice?.elevenLabsVoiceId || "";
+  const didVoiceSelectionChange = currentVoiceElevenLabsId !== nextVoiceElevenLabsId;
+  const didRunwayCharacterIdChange = (nextRunwayCharacterId || null) !== (char.runwayCharacterId || null);
+  const shouldSyncRunwayAvatar =
+    !!char.runwayCharacterId &&
+    !didRunwayCharacterIdChange &&
+    env.RUNWAY_API_KEY &&
+    (
+      nextName !== char.name ||
+      nextBio !== char.bio ||
+      nextGreeting !== char.greeting ||
+      nextPersonalityTone !== char.personalityTone ||
+      (nextAvatarUrl || null) !== (char.avatarUrl || null) ||
+      didVoiceSelectionChange
+    );
+
   const updated = await db.character.update({
     where: { id: characterId },
     data: {
@@ -231,6 +257,29 @@ export async function updateCharacter(
     await (db as any).characterKnowledgeSource.deleteMany({ where: { characterId } });
     if (updates.knowledgeSourceIds.length > 0) {
       await linkKnowledgeSources(characterId, updates.knowledgeSourceIds);
+    }
+  }
+
+  if (shouldSyncRunwayAvatar && updated.runwayCharacterId) {
+    try {
+      await updateRunwayAvatar(updated.runwayCharacterId, {
+        name: updated.name,
+        bio: updated.bio,
+        greeting: updated.greeting,
+        personalityTone: updated.personalityTone,
+        avatarUrl: updated.avatarUrl || undefined,
+        voicePreset: didVoiceSelectionChange
+          ? inferRunwayLiveVoicePreset({
+              voiceId: nextVoice?.elevenLabsVoiceId,
+              voiceName: nextVoice?.name,
+              tone: updated.personalityTone,
+              bio: updated.bio,
+            }) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET
+          : undefined,
+      });
+      console.log(`[Character] Synced Runway avatar profile for ${updated.runwayCharacterId}`);
+    } catch (err: any) {
+      console.error("[Character] Runway avatar sync failed after explicit save:", err.message);
     }
   }
 

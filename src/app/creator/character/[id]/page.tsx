@@ -409,7 +409,7 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
           <div>
             <h3 className="text-sm font-semibold">Character Voice</h3>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              Choose a preset or one of your cloned voices. EchoNest uses this voice for synthesized speech and widget playback. If this character points at an existing Runway avatar, live sessions now use whatever voice is already configured in Runway instead of overwriting it from Echo.
+              Choose a preset or one of your cloned voices. EchoNest uses this voice for synthesized speech and widget playback. Live sessions host the existing Runway avatar as-is; Echo only syncs voice changes back to Runway when you explicitly change settings here and click Save.
             </p>
           </div>
 
