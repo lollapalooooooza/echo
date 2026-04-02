@@ -39,6 +39,34 @@ async function readResponse(response: Response) {
   };
 }
 
+function resolveAvailableVoiceSelection(
+  character: any,
+  voiceLibrary: { presets?: any[]; custom?: any[] } | null | undefined
+) {
+  const selectedVoiceId =
+    character.voice && !character.voice.isDefault && !String(character.voice.id || "").startsWith("preset_")
+      ? String(character.voice.id || "")
+      : String(character.voice?.elevenLabsVoiceId || "");
+  const selectedVoiceName = String(character.voice?.name || "");
+
+  if (!selectedVoiceId || !voiceLibrary) {
+    return { voiceId: selectedVoiceId, voiceName: selectedVoiceName };
+  }
+
+  const presetMatch = Array.isArray(voiceLibrary.presets)
+    ? voiceLibrary.presets.some((voice) => String(voice.id || "") === selectedVoiceId)
+    : false;
+  const customMatch = Array.isArray(voiceLibrary.custom)
+    ? voiceLibrary.custom.some((voice) => String(voice.id || "") === selectedVoiceId)
+    : false;
+
+  if (!presetMatch && !customMatch) {
+    return { voiceId: "", voiceName: "" };
+  }
+
+  return { voiceId: selectedVoiceId, voiceName: selectedVoiceName };
+}
+
 export default function EditCharacterPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [char, setChar] = useState<any>(null);
@@ -122,13 +150,20 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
 
         if (cancelled) return;
 
+        const resolvedVoiceSelection = voicesRes.ok
+          ? resolveAvailableVoiceSelection(current, voicesData)
+          : {
+              voiceId:
+                current.voice && !current.voice.isDefault && !String(current.voice.id || "").startsWith("preset_")
+                  ? current.voice.id
+                  : current.voice?.elevenLabsVoiceId || "",
+              voiceName: current.voice?.name || "",
+            };
+
         setChar({
           ...current,
-          voiceId:
-            current.voice && !current.voice.isDefault && !String(current.voice.id || "").startsWith("preset_")
-              ? current.voice.id
-              : current.voice?.elevenLabsVoiceId || "",
-          voiceName: current.voice?.name || "",
+          voiceId: resolvedVoiceSelection.voiceId,
+          voiceName: resolvedVoiceSelection.voiceName,
           knowledgeSourceIds: current.knowledgeSources?.map((link: any) => link.source.id) || [],
         });
 

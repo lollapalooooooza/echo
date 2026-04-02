@@ -60,7 +60,12 @@ export interface CreateCharacterInput {
   widgetPosition?: string;
 }
 
-async function resolveVoiceSelection(userId: string, voiceId?: string, voiceName?: string) {
+async function resolveVoiceSelection(
+  userId: string,
+  voiceId?: string,
+  voiceName?: string,
+  options?: { allowMissing?: boolean }
+) {
   const selectedVoiceId = voiceId?.trim();
   if (!selectedVoiceId) {
     return { voiceDbId: null, voice: null };
@@ -84,6 +89,9 @@ async function resolveVoiceSelection(userId: string, voiceId?: string, voiceName
 
   const preset = PRESET_VOICES.find((item) => item.id === selectedVoiceId);
   if (!preset) {
+    if (options?.allowMissing) {
+      return { voiceDbId: null, voice: null };
+    }
     throw new Error("Selected voice could not be found");
   }
 
@@ -206,7 +214,7 @@ export async function updateCharacter(
   const resolvedVoice =
     updates.voiceId === undefined
       ? { voiceDbId: undefined, voice: char.voice || null }
-      : await resolveVoiceSelection(userId, updates.voiceId, updates.voiceName);
+      : await resolveVoiceSelection(userId, updates.voiceId, updates.voiceName, { allowMissing: true });
 
   const nextName = updates.name ?? char.name;
   const nextBio = updates.bio ?? char.bio;

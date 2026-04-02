@@ -141,7 +141,7 @@ export default function VoiceLibraryPage() {
             Voice library
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Clone, preview, assign, and reuse voices across characters.
+            Clone, preview, assign, and reuse voices across characters for Echo playback. Runway live avatars keep their own voice configuration in Runway.
           </p>
         </div>
         <Link
@@ -230,7 +230,7 @@ export default function VoiceLibraryPage() {
             <div>
               <h2 className="text-lg font-semibold">How it works</h2>
               <p className="mt-1 text-sm leading-relaxed text-white/72">
-                Voices are now managed separately, then selected while creating or editing a character. That keeps your library clean and reusable.
+                Voices are managed separately, then selected while creating or editing a character. Echo uses them for fallback playback, while Runway live sessions keep using the voice configured on the Runway avatar itself.
               </p>
             </div>
           </div>
@@ -240,7 +240,7 @@ export default function VoiceLibraryPage() {
               Clone once, reuse across multiple characters.
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              Custom voices show where they are already assigned.
+              Custom voices affect Echo playback, not Runway live voice.
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
               In-use voices stay protected from accidental deletion.
@@ -385,9 +385,9 @@ export default function VoiceLibraryPage() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold">Runway default voices</h2>
+          <h2 className="text-lg font-semibold">Echo preset voices</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Runway-provided default options, kept in a scrollable block so this page stays compact.
+            Built-in playback options available inside Echo. They do not overwrite the live voice on an existing Runway avatar.
           </p>
         </div>
 

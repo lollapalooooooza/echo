@@ -260,7 +260,7 @@ export function VoiceSelectionPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
           <p className="text-[13px] text-muted-foreground">
-            Pick a built-in Runway voice, choose from your custom library, or design a new one from a description. EchoNest keeps these voices available for speech playback, while Runway live sessions still auto-match the closest live-compatible preset.
+            Pick an Echo playback voice, choose from your custom library, or design a new one from a description. These voices power fallback chat, previews, and widget playback. Runway live sessions keep using the voice already configured on the Runway avatar.
           </p>
         </div>
         {onClear && selectedVoiceId && (
@@ -279,8 +279,8 @@ export function VoiceSelectionPanel({
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,248,248,0.92))] p-5 shadow-[0_14px_32px_rgba(15,23,42,0.04)]">
             <div>
-              <h4 className="text-sm font-semibold">Runway defaults</h4>
-              <p className="mt-1 text-[12px] text-muted-foreground">Built-in voices tuned for dependable live sessions.</p>
+              <h4 className="text-sm font-semibold">Echo preset voices</h4>
+              <p className="mt-1 text-[12px] text-muted-foreground">Built-in playback voices for fallback chat and widget audio.</p>
             </div>
             <div className="mt-4 max-h-[15.5rem] overflow-y-auto pr-1">
               <div className="space-y-3">
@@ -303,7 +303,7 @@ export function VoiceSelectionPanel({
           <div className="rounded-[28px] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,248,248,0.92))] p-5 shadow-[0_14px_32px_rgba(15,23,42,0.04)]">
             <div>
               <h4 className="text-sm font-semibold">Custom voices</h4>
-              <p className="mt-1 text-[12px] text-muted-foreground">Audio-cloned or description-designed voices you can reuse.</p>
+              <p className="mt-1 text-[12px] text-muted-foreground">Audio-cloned or description-designed voices for Echo playback only.</p>
             </div>
             {customVoices.length > 0 ? (
               <div className="mt-4 max-h-[15.5rem] overflow-y-auto pr-1">
