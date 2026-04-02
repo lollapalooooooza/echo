@@ -997,43 +997,9 @@ export function PodcastRunwayStage({
       : "Live orchestration error";
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-6 pb-6 pt-6">
-      <div className="mb-6 rounded-[32px] border border-white/80 bg-white/84 p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl sm:p-6">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
-              <Radio className="h-3.5 w-3.5" />
-              Runway live default mode
-            </div>
-            <h1
-              className="mt-4 text-[clamp(2rem,4vw,3.2rem)] font-semibold tracking-[-0.04em] text-slate-950"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {charA.name} and {charB.name}
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-7 text-slate-600 sm:text-[15px]">
-              Both characters are hosted in real Runway live sessions below. Start the podcast and the system will relay turns between the two avatars so the conversation stays on the live stage.
-            </p>
-          </div>
-
-          <div className="w-full max-w-xl">
-            <label className="mb-2 block text-[12px] font-medium uppercase tracking-[0.16em] text-slate-500">
-              Discussion topic
-            </label>
-            <input
-              value={topic}
-              onChange={(event) => onTopicChange(event.target.value)}
-              placeholder="e.g. The future of AI in education..."
-              className="h-12 w-full rounded-2xl border border-neutral-300 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
-            />
-            <p className="mt-2 text-[12px] leading-5 text-slate-500">
-              The chat box remains the fallback mode in the top-right toggle. This screen is the live Runway version.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem_minmax(0,1fr)]">
+    <div className="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col px-6 pb-6 pt-4">
+      <div className="flex min-h-0 flex-1 items-center">
+        <div className="grid w-full gap-5 xl:grid-cols-[minmax(0,1fr)_24rem_minmax(0,1fr)]">
         <PodcastSessionCard
           ref={sessionARef}
           speaker="A"
@@ -1049,15 +1015,17 @@ export function PodcastRunwayStage({
               <Volume2 className="h-3.5 w-3.5" />
               Live orchestration
             </div>
-            <h2
-              className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-slate-950"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              Two avatars, one live conversation
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-slate-600">
-              The live stage keeps both Runway hosts online and relays turn prompts between them. Everything below is light-mode by default so it stays consistent with the rest of EchoNest.
-            </p>
+            <div className="mt-4">
+              <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Discussion topic
+              </label>
+              <input
+                value={topic}
+                onChange={(event) => onTopicChange(event.target.value)}
+                placeholder="e.g. The future of AI in education..."
+                className="h-12 w-full rounded-2xl border border-neutral-300 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
+              />
+            </div>
           </div>
 
           <div className="mt-6 rounded-[28px] border border-white/90 bg-white/82 p-4 shadow-sm">
@@ -1132,9 +1100,10 @@ export function PodcastRunwayStage({
           onReadyChange={handleReadyChange}
           onAvatarText={handleAvatarText}
         />
+        </div>
       </div>
 
-      <section className="mt-6 min-h-0 flex-1 rounded-[32px] border border-white/80 bg-white/84 p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl">
+      <section className="mt-5 min-h-0 shrink-0 rounded-[32px] border border-white/80 bg-white/84 p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
