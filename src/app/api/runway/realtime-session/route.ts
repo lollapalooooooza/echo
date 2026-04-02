@@ -12,7 +12,6 @@ import {
   getRealtimeSession,
   type RunwayRealtimeSession,
 } from "@/services/runwayRealtime";
-import { buildRunwaySessionPersonality } from "@/services/runwayVoice";
 
 const DEFAULT_MAX_DURATION = 300;
 const SESSION_READY_TIMEOUT_MS = 30_000;
@@ -106,13 +105,6 @@ export async function POST(req: NextRequest) {
         maxDuration,
         {
           enableClientEvents: clientEventsEnabled,
-          personality: buildRunwaySessionPersonality({
-            name: character.name,
-            bio: character.bio,
-            tone: character.personalityTone,
-            enableArticleTool: clientEventsEnabled,
-          }),
-          startScript: character.greeting?.trim() || undefined,
         }
       );
     } catch (error) {
@@ -126,13 +118,6 @@ export async function POST(req: NextRequest) {
         maxDuration,
         {
           enableClientEvents: false,
-          personality: buildRunwaySessionPersonality({
-            name: character.name,
-            bio: character.bio,
-            tone: character.personalityTone,
-            enableArticleTool: false,
-          }),
-          startScript: character.greeting?.trim() || undefined,
         }
       );
     }

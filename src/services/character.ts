@@ -8,7 +8,7 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
-import { createRunwayAvatar, updateRunwayAvatar } from "@/services/runwayAvatar";
+import { createRunwayAvatar } from "@/services/runwayAvatar";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 import { PRESET_VOICES } from "@/services/voiceService";
 import { DEFAULT_RUNWAY_LIVE_VOICE_PRESET, inferRunwayLiveVoicePreset } from "@/services/runwayVoice";
@@ -208,19 +208,6 @@ export async function updateCharacter(
       ? { voiceDbId: undefined, voice: char.voice || null }
       : await resolveVoiceSelection(userId, updates.voiceId, updates.voiceName);
 
-  const runwayVoicePreset =
-    inferRunwayLiveVoicePreset({
-      voiceId:
-        resolvedVoice.voice?.elevenLabsVoiceId ||
-        (updates.voiceId === undefined ? char.voice?.elevenLabsVoiceId : updates.voiceId),
-      voiceName:
-        resolvedVoice.voice?.name ||
-        updates.voiceName ||
-        char.voice?.name,
-      tone: updates.personalityTone ?? char.personalityTone,
-      bio: updates.bio ?? char.bio,
-    }) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET;
-
   const updated = await db.character.update({
     where: { id: characterId },
     data: {
@@ -244,31 +231,6 @@ export async function updateCharacter(
     await (db as any).characterKnowledgeSource.deleteMany({ where: { characterId } });
     if (updates.knowledgeSourceIds.length > 0) {
       await linkKnowledgeSources(characterId, updates.knowledgeSourceIds);
-    }
-  }
-
-  const shouldSyncRunwayAvatar =
-    updates.name !== undefined ||
-    updates.bio !== undefined ||
-    updates.greeting !== undefined ||
-    updates.personalityTone !== undefined ||
-    updates.avatarUrl !== undefined ||
-    updates.voiceId !== undefined ||
-    updates.voiceName !== undefined;
-
-  if (updated.runwayCharacterId && env.RUNWAY_API_KEY && shouldSyncRunwayAvatar) {
-    try {
-      await updateRunwayAvatar(updated.runwayCharacterId, {
-        name: updated.name,
-        bio: updated.bio,
-        greeting: updated.greeting,
-        personalityTone: updated.personalityTone,
-        avatarUrl: updated.avatarUrl || undefined,
-        voicePreset: runwayVoicePreset,
-      });
-      console.log(`[Character] Synced Runway avatar profile for ${updated.runwayCharacterId}`);
-    } catch (err: any) {
-      console.error("[Character] Runway avatar sync failed after update:", err.message);
     }
   }
 
