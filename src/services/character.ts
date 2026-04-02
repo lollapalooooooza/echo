@@ -8,7 +8,7 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
-import { createRunwayAvatar, updateRunwayAvatar } from "@/services/runwayAvatar";
+import { createRunwayAvatar } from "@/services/runwayAvatar";
 import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 import { PRESET_VOICES } from "@/services/voiceService";
 import { DEFAULT_RUNWAY_LIVE_VOICE_PRESET, inferRunwayLiveVoicePreset } from "@/services/runwayVoice";
@@ -142,6 +142,7 @@ export async function createCharacter(input: CreateCharacterInput) {
 
   // Create Runway avatar if needed
   let runwayCharacterId = input.runwayCharacterId?.trim() || null;
+  let createdRunwayAvatarId: string | null = null;
   if (!runwayCharacterId && input.avatarUrl && env.RUNWAY_API_KEY) {
     try {
       const avatar = await createRunwayAvatar({
@@ -153,6 +154,7 @@ export async function createCharacter(input: CreateCharacterInput) {
         voicePreset: runwayVoicePreset,
       });
       runwayCharacterId = avatar.id;
+      createdRunwayAvatarId = avatar.id;
     } catch (err: any) {
       console.error("[Character] Runway avatar creation failed:", err.message);
       // Don't block character creation if Runway fails
@@ -184,11 +186,11 @@ export async function createCharacter(input: CreateCharacterInput) {
     await linkKnowledgeSources(character.id, input.knowledgeSourceIds);
   }
 
-  if (runwayCharacterId && env.RUNWAY_API_KEY) {
+  if (createdRunwayAvatarId && env.RUNWAY_API_KEY) {
     try {
       const linkedSourceIds = await getLinkedSourceIds(character.id);
-      await syncRunwayKnowledgeToAvatar(runwayCharacterId, input.userId, linkedSourceIds);
-      console.log(`[Character] Synced Runway knowledge to avatar ${runwayCharacterId}`);
+      await syncRunwayKnowledgeToAvatar(createdRunwayAvatarId, input.userId, linkedSourceIds);
+      console.log(`[Character] Synced Runway knowledge to avatar ${createdRunwayAvatarId}`);
     } catch (err: any) {
       console.error("[Character] Runway knowledge sync failed:", err.message);
     }
@@ -216,32 +218,6 @@ export async function updateCharacter(
       ? { voiceDbId: undefined, voice: char.voice || null }
       : await resolveVoiceSelection(userId, updates.voiceId, updates.voiceName, { allowMissing: true });
 
-  const nextName = updates.name ?? char.name;
-  const nextBio = updates.bio ?? char.bio;
-  const nextGreeting = updates.greeting ?? char.greeting;
-  const nextPersonalityTone = updates.personalityTone ?? char.personalityTone;
-  const nextAvatarUrl =
-    updates.avatarUrl === undefined ? char.avatarUrl : updates.avatarUrl?.trim() || null;
-  const nextVoice = updates.voiceId === undefined ? char.voice || null : resolvedVoice.voice || null;
-  const nextRunwayCharacterId =
-    updates.runwayCharacterId === undefined ? char.runwayCharacterId : updates.runwayCharacterId?.trim() || null;
-  const currentVoiceElevenLabsId = char.voice?.elevenLabsVoiceId || "";
-  const nextVoiceElevenLabsId = nextVoice?.elevenLabsVoiceId || "";
-  const didVoiceSelectionChange = currentVoiceElevenLabsId !== nextVoiceElevenLabsId;
-  const didRunwayCharacterIdChange = (nextRunwayCharacterId || null) !== (char.runwayCharacterId || null);
-  const shouldSyncRunwayAvatar =
-    !!char.runwayCharacterId &&
-    !didRunwayCharacterIdChange &&
-    env.RUNWAY_API_KEY &&
-    (
-      nextName !== char.name ||
-      nextBio !== char.bio ||
-      nextGreeting !== char.greeting ||
-      nextPersonalityTone !== char.personalityTone ||
-      (nextAvatarUrl || null) !== (char.avatarUrl || null) ||
-      didVoiceSelectionChange
-    );
-
   const updated = await db.character.update({
     where: { id: characterId },
     data: {
@@ -265,39 +241,6 @@ export async function updateCharacter(
     await (db as any).characterKnowledgeSource.deleteMany({ where: { characterId } });
     if (updates.knowledgeSourceIds.length > 0) {
       await linkKnowledgeSources(characterId, updates.knowledgeSourceIds);
-    }
-  }
-
-  if (shouldSyncRunwayAvatar && updated.runwayCharacterId) {
-    try {
-      await updateRunwayAvatar(updated.runwayCharacterId, {
-        name: updated.name,
-        bio: updated.bio,
-        greeting: updated.greeting,
-        personalityTone: updated.personalityTone,
-        avatarUrl: updated.avatarUrl || undefined,
-        voicePreset: didVoiceSelectionChange
-          ? inferRunwayLiveVoicePreset({
-              voiceId: nextVoice?.elevenLabsVoiceId,
-              voiceName: nextVoice?.name,
-              tone: updated.personalityTone,
-              bio: updated.bio,
-            }) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET
-          : undefined,
-      });
-      console.log(`[Character] Synced Runway avatar profile for ${updated.runwayCharacterId}`);
-    } catch (err: any) {
-      console.error("[Character] Runway avatar sync failed after explicit save:", err.message);
-    }
-  }
-
-  if (updated.runwayCharacterId && env.RUNWAY_API_KEY && (updates.knowledgeSourceIds !== undefined || updates.runwayCharacterId !== undefined)) {
-    try {
-      const linkedSourceIds = await getLinkedSourceIds(characterId);
-      await syncRunwayKnowledgeToAvatar(updated.runwayCharacterId, userId, linkedSourceIds);
-      console.log(`[Character] Synced updated Runway knowledge to avatar ${updated.runwayCharacterId}`);
-    } catch (err: any) {
-      console.error("[Character] Runway knowledge sync failed after update:", err.message);
     }
   }
 
