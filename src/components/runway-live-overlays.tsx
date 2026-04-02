@@ -207,13 +207,13 @@ export function RunwayLiveOverlays({
   return (
     <>
       {article && (
-        <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex justify-end sm:inset-x-6 sm:top-6">
+        <div className="pointer-events-none absolute inset-x-4 top-16 z-30 flex justify-end sm:inset-x-6 sm:top-[4.5rem]">
           <div
             className={cn(
-              "pointer-events-auto w-full max-w-sm rounded-[24px] border p-4 shadow-2xl backdrop-blur-2xl",
+              "pointer-events-auto w-full max-w-sm animate-in slide-in-from-right-4 fade-in duration-300 rounded-[24px] border p-4 shadow-2xl backdrop-blur-2xl",
               isLight
-                ? "border-white/85 bg-white/74 shadow-amber-200/50"
-                : "border-white/12 bg-black/42 shadow-black/45"
+                ? "border-white/85 bg-white/80 shadow-amber-200/50"
+                : "border-white/12 bg-black/50 shadow-black/45"
             )}
           >
             <div className="flex items-start gap-3">
@@ -233,7 +233,7 @@ export function RunwayLiveOverlays({
                     isLight ? "text-amber-700/70" : "text-amber-100/70"
                   )}
                 >
-                  Article bubble
+                  From knowledge base
                 </p>
                 <p
                   className={cn(
@@ -243,6 +243,16 @@ export function RunwayLiveOverlays({
                 >
                   {article.title}
                 </p>
+                {article.excerpt && (
+                  <p
+                    className={cn(
+                      "mt-1.5 line-clamp-2 text-[12px] leading-5",
+                      isLight ? "text-slate-500" : "text-white/50"
+                    )}
+                  >
+                    {article.excerpt}
+                  </p>
+                )}
                 <p
                   className={cn(
                     "mt-2 text-xs leading-5",
@@ -293,8 +303,8 @@ export function RunwayLiveOverlays({
                 className={cn(
                   "inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors",
                   isLight
-                    ? "bg-slate-100 text-slate-500 hover:text-slate-900"
-                    : "bg-white/10 text-white/50 hover:text-white"
+                    ? "bg-slate-200/80 text-slate-500 hover:bg-slate-300 hover:text-slate-900"
+                    : "bg-white/12 text-white/50 hover:bg-white/20 hover:text-white"
                 )}
                 aria-label="Dismiss article bubble"
               >
