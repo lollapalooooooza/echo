@@ -4,7 +4,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
-import { getRunwayAvatar } from "@/services/runwayAvatar";
 import {
   cancelRealtimeSession,
   consumeRealtimeSession,
@@ -15,8 +14,8 @@ import {
 
 const DEFAULT_MAX_DURATION = 300;
 const SESSION_READY_TIMEOUT_MS = 30_000;
-const INITIAL_SESSION_POLL_INTERVAL_MS = 150;
-const MAX_SESSION_POLL_INTERVAL_MS = 500;
+const INITIAL_SESSION_POLL_INTERVAL_MS = 100;
+const MAX_SESSION_POLL_INTERVAL_MS = 350;
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -39,17 +38,6 @@ async function getAccessibleCharacter(characterId: string, userId?: string) {
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isToolCallingUnavailableError(error: unknown) {
-  const message =
-    typeof error === "string"
-      ? error
-      : error && typeof error === "object" && "message" in error
-        ? String((error as any).message || "")
-        : "";
-
-  return /tool calling is coming soon for all organizations/i.test(message);
 }
 
 export async function POST(req: NextRequest) {
@@ -81,47 +69,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Starting a session should not mutate the avatar itself. Older custom-voice
-    // avatars may lack webcam support, but rewriting them here can leave the
-    // session connected yet unusable.
-    const avatar = await getRunwayAvatar(character.runwayCharacterId.trim());
-    const visualInputEnabled = avatar.voice?.type === "runway-live-preset";
-    if (avatar.status !== "READY") {
-      return NextResponse.json(
-        {
-          error: `Runway avatar is ${avatar.status.toLowerCase()} and cannot start a live session yet`,
-          avatar,
-        },
-        { status: 409 }
-      );
-    }
-
     const maxDuration = clampMaxDuration(body?.maxDuration);
-    let clientEventsEnabled = avatar.voice?.type === "runway-live-preset";
-    let created;
-
-    try {
-      created = await createRealtimeSession(
-        character.runwayCharacterId.trim(),
-        maxDuration,
-        {
-          enableClientEvents: clientEventsEnabled,
-        }
-      );
-    } catch (error) {
-      if (!clientEventsEnabled || !isToolCallingUnavailableError(error)) {
-        throw error;
-      }
-
-      clientEventsEnabled = false;
-      created = await createRealtimeSession(
-        character.runwayCharacterId.trim(),
-        maxDuration,
-        {
-          enableClientEvents: false,
-        }
-      );
-    }
+    const created = await createRealtimeSession(character.runwayCharacterId.trim(), maxDuration);
     const deadline = Date.now() + SESSION_READY_TIMEOUT_MS;
     let liveSession: RunwayRealtimeSession | { id: string; status: "NOT_READY" } = {
       id: created.id,
@@ -144,8 +93,6 @@ export async function POST(req: NextRequest) {
           serverUrl: credentials.url,
           token: credentials.token,
           roomName: credentials.roomName,
-          clientEventsEnabled,
-          visualInputEnabled,
         });
       }
 
