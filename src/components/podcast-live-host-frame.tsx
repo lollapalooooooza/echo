@@ -185,11 +185,11 @@ export const PodcastLiveHostFrame = forwardRef<
   return (
     <section
       className={cn(
-        "flex min-h-[30rem] flex-col rounded-[28px] border bg-[#fcfaf6] p-3 transition-colors duration-300",
-        active ? "border-[#efb36c]" : "border-[#e8dfd1]"
+        "flex min-h-[30rem] flex-col rounded-[30px] border bg-[#fcfaf6] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.04)] transition-colors duration-300",
+        active ? "border-[#efb36c] shadow-[0_24px_46px_rgba(239,179,108,0.16)]" : "border-[#e8dfd1]"
       )}
     >
-      <div className="flex items-center justify-between gap-3 px-1 pb-3 pt-1">
+      <div className="flex items-center justify-between gap-3 px-1 pb-4 pt-1">
         <div className="flex min-w-0 items-center gap-3">
           <div className="h-10 w-10 overflow-hidden rounded-2xl border border-[#eadfce] bg-[#f5eee2]">
             {character.avatarUrl ? (
@@ -227,7 +227,7 @@ export const PodcastLiveHostFrame = forwardRef<
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden rounded-[22px] bg-[#efe8dd]">
+      <div className="relative min-h-[24rem] flex-1 overflow-hidden rounded-[26px] bg-black ring-1 ring-black/6">
         {frameError ? (
           <div className="flex h-full min-h-[24rem] flex-col items-center justify-center px-6 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f5e6cf] text-[#996026]">
@@ -253,7 +253,7 @@ export const PodcastLiveHostFrame = forwardRef<
             src={frameSrc}
             title={`${character.name} live host`}
             allow="autoplay; microphone"
-            className="h-full min-h-[24rem] w-full overflow-hidden border-0 bg-black"
+            className="block h-full min-h-[24rem] w-full overflow-hidden border-0 bg-black align-top"
           />
         )}
       </div>

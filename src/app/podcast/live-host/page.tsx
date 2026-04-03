@@ -131,25 +131,26 @@ function LiveCharacterPlaceholder({
   label: string;
 }) {
   return (
-    <div className="relative flex h-full min-h-full items-center justify-center overflow-hidden bg-[#efe8dd]">
+    <div className="relative flex h-full min-h-full items-center justify-center overflow-hidden bg-black">
       {character?.avatarUrl ? (
         <img
           src={character.avatarUrl}
           alt={character.name}
-          className="absolute inset-0 h-full w-full object-cover opacity-18 blur-[2px]"
+          className="absolute inset-0 block h-full w-full scale-[1.03] object-cover opacity-60 blur-[3px]"
         />
       ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#ffffff,#f0e7da_58%,#e4d9c9_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#74614c,#2d241a_42%,#000000_100%)]" />
       )}
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.24),rgba(239,232,221,0.94))]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.26),rgba(0,0,0,0.68))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.06),transparent_46%)]" />
       <div className="relative z-10 flex max-w-md flex-col items-center px-6 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#996026] backdrop-blur-xl">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-black/42 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/92 backdrop-blur-xl">
           <Loader2 className="h-4 w-4 animate-spin" />
           {label}
         </div>
         {character?.name ? (
           <p
-            className="mt-4 text-[clamp(1.4rem,2.3vw,2rem)] font-semibold tracking-[-0.04em] text-slate-900"
+            className="mt-4 text-[clamp(1.4rem,2.3vw,2rem)] font-semibold tracking-[-0.04em] text-white"
             style={{ fontFamily: "var(--font-display)" }}
           >
             {character.name}
@@ -179,7 +180,7 @@ function RunwayFrameVideo({
     return (
       <VideoTrack
         trackRef={avatar.videoTrackRef}
-        className="h-full w-full bg-black object-cover"
+        className="block h-full w-full bg-black object-cover"
       />
     );
   }
@@ -483,7 +484,7 @@ function PodcastHostRuntime({
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden rounded-[28px] bg-black"
+      className="relative h-full w-full overflow-hidden bg-black"
       onPointerDownCapture={() => void warmLiveSession()}
     >
       <AvatarVideo>
@@ -622,7 +623,7 @@ export default function PodcastLiveHostPage() {
 
   if (!character || connection.status === "connecting") {
     return (
-      <div className="h-screen w-screen bg-[#f5efe3]">
+      <div className="h-screen w-screen overflow-hidden bg-black">
         <LiveCharacterPlaceholder character={character || {}} label="Starting session" />
       </div>
     );
@@ -630,8 +631,8 @@ export default function PodcastLiveHostPage() {
 
   if (connection.status !== "ready") {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#f5efe3] px-6">
-        <div className="max-w-sm rounded-[28px] border border-rose-200 bg-white/92 px-6 py-5 text-center text-sm text-rose-700 shadow-[0_16px_48px_rgba(15,23,42,0.08)]">
+      <div className="flex h-screen w-screen items-center justify-center bg-black px-6">
+        <div className="max-w-sm rounded-[28px] border border-white/12 bg-black/58 px-6 py-5 text-center text-sm text-white/86 shadow-[0_16px_48px_rgba(0,0,0,0.24)] backdrop-blur-xl">
           {connection.status === "error" ? connection.error : "Runway live session ended"}
         </div>
       </div>

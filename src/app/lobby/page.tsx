@@ -89,18 +89,6 @@ export default function LobbyPage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <BrandMark href="/" size="sm" />
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => { setPodcastMode((p) => !p); setPodcastSelection([]); setPodcastTopic(""); }}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition-all",
-                podcastMode
-                  ? "bg-orange-500 text-white shadow-sm"
-                  : "bg-orange-50 text-orange-700 hover:bg-orange-100"
-              )}
-            >
-              <Mic className="h-3 w-3" />
-              Podcast
-            </button>
             <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
               <Radio className="h-3 w-3 text-emerald-600" />
               <span className="text-[11px] font-medium text-emerald-700">{characters.length} Live</span>
@@ -119,12 +107,52 @@ export default function LobbyPage() {
             <Sparkles className="h-4 w-4 text-muted-foreground" />
             <span className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">Character Lobby</span>
           </div>
-          <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-            Discover EchoNest characters.
-          </h1>
-          <p className="mt-2 text-[15px] text-muted-foreground max-w-lg">
-            Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise.
-          </p>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:gap-5">
+                <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
+                  Discover EchoNest characters.
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPodcastMode((current) => !current);
+                    setPodcastSelection([]);
+                    setPodcastTopic("");
+                  }}
+                  className={cn(
+                    "group relative inline-flex w-fit rounded-[28px] transition-transform duration-300 hover:-translate-y-1",
+                    podcastMode
+                      ? "scale-[1.01]"
+                      : ""
+                  )}
+                  aria-label="Open podcast studio mode"
+                >
+                  <img
+                    src="/podcasticon.png"
+                    alt="Enter podcast studio"
+                    className={cn(
+                      "block h-[112px] w-auto drop-shadow-[0_18px_28px_rgba(92,53,22,0.2)] transition-transform duration-300 group-hover:scale-[1.02] sm:h-[132px]",
+                      podcastMode ? "drop-shadow-[0_24px_38px_rgba(92,53,22,0.28)]" : ""
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "absolute right-4 top-4 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                      podcastMode
+                        ? "bg-emerald-100/95 text-emerald-700"
+                        : "bg-white/88 text-slate-700"
+                    )}
+                  >
+                    {podcastMode ? `Open ${podcastSelection.length}/2` : "Studio"}
+                  </span>
+                </button>
+              </div>
+              <p className="mt-2 max-w-lg text-[15px] text-muted-foreground">
+                Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Search + filters */}
@@ -167,7 +195,7 @@ export default function LobbyPage() {
                   <h3 className="text-sm font-semibold text-orange-900">Podcast Mode</h3>
                 </div>
                 <p className="mt-1 text-[13px] text-orange-700/80">
-                  Select two characters below to open the podcast studio. Runway Live is the default host mode there, and you can switch to the chat box fallback anytime for automated back-and-forth on your chosen topic.
+                  Select two characters below to open the podcast studio.
                 </p>
               </div>
               <button
