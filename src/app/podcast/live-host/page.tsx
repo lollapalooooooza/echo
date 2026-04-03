@@ -342,31 +342,39 @@ function PodcastHostRuntime({
       }
 
       if (!publishedTrackRef.current) {
-        const mediaTrack = destinationRef.current?.stream.getAudioTracks()[0];
-        if (!mediaTrack) {
+        const syntheticTrack = destinationRef.current?.stream.getAudioTracks()[0];
+        if (!syntheticTrack) {
           throw new Error("Unable to create podcast input audio track");
         }
 
-        // Unpublish any SDK-auto-captured real microphone first so the avatar
-        // only hears our silent synthetic stream (prevents both hosts from
-        // responding to ambient mic noise simultaneously).
+        // Swap the SDK's real microphone MediaStreamTrack with our silent
+        // synthetic stream using LiveKit's replaceTrack API.  This is seamless:
+        // the publication stays intact, so the SDK doesn't try to re-capture the
+        // real mic, and the Runway avatar receives only audio we explicitly play
+        // through the Web Audio bridge.
         const existingMicPub = room.localParticipant.getTrackPublication(
           Track.Source.Microphone
         );
-        if (existingMicPub?.track?.mediaStreamTrack && existingMicPub.track.mediaStreamTrack.id !== mediaTrack.id) {
-          try {
-            await room.localParticipant.unpublishTrack(existingMicPub.track.mediaStreamTrack, true);
+
+        if (
+          existingMicPub?.track &&
+          typeof (existingMicPub.track as any).replaceTrack === "function"
+        ) {
+          await (existingMicPub.track as any).replaceTrack(syntheticTrack);
+        } else {
+          // Fallback for older SDK versions: unpublish then re-publish
+          if (existingMicPub?.track?.mediaStreamTrack) {
+            await room.localParticipant
+              .unpublishTrack(existingMicPub.track.mediaStreamTrack, true)
+              .catch(() => undefined);
             existingMicPub.track.mediaStreamTrack.stop();
-          } catch {
-            // Best-effort; publishing our track below will replace it anyway
           }
+          await room.localParticipant.publishTrack(syntheticTrack, {
+            source: Track.Source.Microphone,
+          });
         }
 
-        await room.localParticipant.publishTrack(mediaTrack, {
-          source: Track.Source.Microphone,
-        });
-
-        publishedTrackRef.current = mediaTrack;
+        publishedTrackRef.current = syntheticTrack;
       }
 
       return {
@@ -404,14 +412,28 @@ function PodcastHostRuntime({
   // the avatar participant has joined.  This replaces the SDK's real-microphone
   // track with our silent synthetic stream so the avatar does NOT respond to
   // ambient mic noise — it will only hear audio when we explicitly play TTS.
+  // We wait briefly for the SDK to publish its mic track first so replaceTrack
+  // can swap it in-place rather than racing against the SDK's async capture.
   useEffect(() => {
     if (session.state !== "active" || !avatar.participant) return;
     let cancelled = false;
-    ensureAudioBridge()
-      .then(() => { if (!cancelled) setBridgeReady(true); })
-      .catch(() => { /* will retry on first prompt */ });
+
+    const waitForMicThenBridge = async () => {
+      // Give the SDK up to ~3 seconds to publish its mic track
+      for (let i = 0; i < 15; i++) {
+        if (cancelled) return;
+        const micPub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+        if (micPub?.track) break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (cancelled) return;
+      await ensureAudioBridge();
+      if (!cancelled) setBridgeReady(true);
+    };
+
+    waitForMicThenBridge().catch(() => { /* will retry on first prompt */ });
     return () => { cancelled = true; };
-  }, [session.state, avatar.participant, ensureAudioBridge]);
+  }, [session.state, avatar.participant, ensureAudioBridge, room]);
 
   useEffect(() => {
     if (session.state === "active" && avatar.participant && videoReady && bridgeReady) {
