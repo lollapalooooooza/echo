@@ -8,15 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Loader2,
-  Pause,
-  Play,
-  Radio,
-  RefreshCw,
-  RotateCcw,
-  Volume2,
-} from "lucide-react";
+import { Loader2, Pause, Play, Radio, RefreshCw, RotateCcw, Volume2 } from "lucide-react";
 import { isTrackReference, useRoomContext } from "@livekit/components-react";
 import {
   AvatarSession,
@@ -392,7 +384,7 @@ const PodcastSessionRuntime = forwardRef<
   }
 
   return (
-    <div className="relative h-full min-h-[21rem] overflow-hidden rounded-[28px]">
+    <div className="relative h-full min-h-[21rem] overflow-hidden rounded-[28px] bg-black">
       <AvatarVideo>
         {(status) => {
           const hasVideoTrack =
@@ -402,7 +394,7 @@ const PodcastSessionRuntime = forwardRef<
             return (
               <VideoTrack
                 trackRef={status.videoTrackRef}
-                className="h-full w-full object-cover"
+                className="h-full w-full bg-black object-contain"
               />
             );
           }
@@ -417,22 +409,6 @@ const PodcastSessionRuntime = forwardRef<
           );
         }}
       </AvatarVideo>
-
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between p-4">
-        <div
-          className={cn(
-            "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] shadow-sm backdrop-blur-xl",
-            active
-              ? "bg-orange-50/94 text-orange-700"
-              : "bg-white/82 text-emerald-700"
-          )}
-        >
-          {active ? "Speaking" : "Runway Live"}
-        </div>
-        <div className="rounded-full bg-slate-950/78 px-3 py-1 text-[11px] font-medium text-white backdrop-blur-xl">
-          {character.name}
-        </div>
-      </div>
 
       {!canPlaybackAudio && (
         <div className="absolute inset-x-0 bottom-5 z-20 flex justify-center px-4">
@@ -705,12 +681,10 @@ export function PodcastRunwayStage({
   charA,
   charB,
   topic,
-  onTopicChange,
 }: {
   charA: any;
   charB: any;
   topic: string;
-  onTopicChange: (value: string) => void;
 }) {
   const sessionARef = useRef<PodcastLiveSessionHandle | null>(null);
   const sessionBRef = useRef<PodcastLiveSessionHandle | null>(null);
@@ -733,6 +707,10 @@ export function PodcastRunwayStage({
   const [status, setStatus] = useState<LiveStatus>("idle");
   const [activeSpeaker, setActiveSpeaker] = useState<SpeakerId | null>(null);
   const [liveError, setLiveError] = useState("");
+  const hasAutoStartedRef = useRef(false);
+  const effectiveTopic =
+    compactText(topic) ||
+    `${charA.name} and ${charB.name} are in a live podcast conversation about their core ideas, key disagreements, and practical takeaways.`;
 
   useEffect(() => {
     statusRef.current = status;
@@ -768,6 +746,10 @@ export function PodcastRunwayStage({
       resetConversation("idle");
     };
   }, [resetConversation]);
+
+  useEffect(() => {
+    hasAutoStartedRef.current = false;
+  }, [charA.id, charB.id, effectiveTopic]);
 
   const getCharacter = useCallback(
     (speaker: SpeakerId) => (speaker === "A" ? charA : charB),
@@ -821,7 +803,7 @@ export function PodcastRunwayStage({
         body: JSON.stringify({
           characterIdA: charA.id,
           characterIdB: charB.id,
-          topic,
+          topic: effectiveTopic,
           history,
           speakerTurn: speaker,
         }),
@@ -896,7 +878,7 @@ export function PodcastRunwayStage({
 
       return finalText;
     },
-    [charA.id, charB.id, getCharacter, topic]
+    [charA.id, charB.id, effectiveTopic, getCharacter]
   );
 
   const runTurn = useCallback(
@@ -960,9 +942,6 @@ export function PodcastRunwayStage({
   );
 
   const startLivePodcast = useCallback(async () => {
-    const normalizedTopic = compactText(topic);
-    if (!normalizedTopic) return;
-
     if (!sessionReady.A || !sessionReady.B) {
       setLiveError("Both Runway live hosts need to be ready before the podcast can start.");
       return;
@@ -989,7 +968,7 @@ export function PodcastRunwayStage({
       setStatus("error");
       setLiveError(error.message || "Failed to start the Runway live podcast");
     }
-  }, [clearAdvanceTimer, runTurn, sessionReady.A, sessionReady.B, topic]);
+  }, [clearAdvanceTimer, runTurn, sessionReady.A, sessionReady.B]);
 
   const togglePaused = useCallback(async () => {
     if (statusRef.current === "paused") {
@@ -1036,10 +1015,16 @@ export function PodcastRunwayStage({
       ? "Podcast complete"
       : "Live orchestration error";
 
+  useEffect(() => {
+    if (!liveReady || status !== "idle" || hasAutoStartedRef.current) return;
+    hasAutoStartedRef.current = true;
+    void startLivePodcast();
+  }, [liveReady, startLivePodcast, status]);
+
   return (
     <div className="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col px-6 pb-6 pt-4">
       <div className="flex min-h-0 flex-1 items-center">
-        <div className="grid w-full gap-5 xl:grid-cols-[minmax(0,1fr)_24rem_minmax(0,1fr)]">
+        <div className="grid w-full gap-5 xl:grid-cols-2">
         <PodcastSessionCard
           ref={sessionARef}
           speaker="A"
@@ -1047,89 +1032,6 @@ export function PodcastRunwayStage({
           active={activeSpeaker === "A"}
           onReadyChange={handleReadyChange}
         />
-
-        <aside className="flex flex-col justify-between rounded-[32px] border border-amber-200/70 bg-[linear-gradient(160deg,#fff7e2_0%,#fffdf7_58%,#ffffff_100%)] p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.42)]">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/86 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 shadow-sm">
-              <Volume2 className="h-3.5 w-3.5" />
-              Live orchestration
-            </div>
-            <div className="mt-4">
-              <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Discussion topic
-              </label>
-              <input
-                value={topic}
-                onChange={(event) => onTopicChange(event.target.value)}
-                placeholder="e.g. The future of AI in education..."
-                className="h-12 w-full rounded-2xl border border-neutral-300 bg-white px-4 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-[28px] border border-white/90 bg-white/82 p-4 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Live status
-            </p>
-            <p className="mt-2 text-sm font-medium text-slate-800">{liveStatusLabel}</p>
-            <p className="mt-2 text-[12px] leading-5 text-slate-500">
-              Turns completed: {turnCountRef.current} / {MAX_LIVE_TURNS}
-            </p>
-
-            {liveError && (
-              <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] leading-5 text-rose-700">
-                {liveError}
-              </p>
-            )}
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void startLivePodcast()}
-                disabled={!compactText(topic) || !liveReady || status === "starting"}
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-slate-900 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {status === "starting" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                {status === "active" || status === "paused" ? "Restart live podcast" : "Start live podcast"}
-              </button>
-
-              {(status === "starting" || status === "active" || status === "paused") && (
-                <button
-                  type="button"
-                  onClick={() => void togglePaused()}
-                  className="inline-flex h-11 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
-                >
-                  {status === "paused" ? (
-                    <>
-                      <Play className="h-4 w-4" />
-                      Resume
-                    </>
-                  ) : (
-                    <>
-                      <Pause className="h-4 w-4" />
-                      Pause
-                    </>
-                  )}
-                </button>
-              )}
-
-              {(status === "ended" || status === "error") && (
-                <button
-                  type="button"
-                  onClick={restartLivePodcast}
-                  className="inline-flex h-11 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Restart
-                </button>
-              )}
-            </div>
-          </div>
-        </aside>
 
         <PodcastSessionCard
           ref={sessionBRef}
@@ -1142,21 +1044,59 @@ export function PodcastRunwayStage({
       </div>
 
       <section className="mt-5 min-h-0 shrink-0 rounded-[32px] border border-white/80 bg-white/84 p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Live transcript
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              This transcript is driven by the two active Runway sessions, not the fallback chat box.
+              Two Runway live hosts are shown directly above. The conversation starts automatically once both sessions are ready.
             </p>
           </div>
-          {activeSpeaker && (
-            <div className="rounded-full bg-orange-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-700">
-              {getCharacter(activeSpeaker).name} live
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+              {liveStatusLabel}
             </div>
-          )}
+            <div className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm">
+              Turns {turnCountRef.current} / {MAX_LIVE_TURNS}
+            </div>
+            {(status === "starting" || status === "active" || status === "paused") && (
+              <button
+                type="button"
+                onClick={() => void togglePaused()}
+                className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
+              >
+                {status === "paused" ? (
+                  <>
+                    <Play className="h-4 w-4" />
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause className="h-4 w-4" />
+                    Pause
+                  </>
+                )}
+              </button>
+            )}
+            {(status === "ended" || status === "error") && (
+              <button
+                type="button"
+                onClick={restartLivePodcast}
+                className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Restart
+              </button>
+            )}
+          </div>
         </div>
+
+        {liveError && (
+          <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] leading-5 text-rose-700">
+            {liveError}
+          </p>
+        )}
 
         <div className="mt-5 min-h-[14rem] space-y-4 overflow-y-auto pr-1">
           {messages.length > 0 ? (
