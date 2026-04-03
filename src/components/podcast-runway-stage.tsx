@@ -24,7 +24,6 @@ import {
   VideoTrack,
   useAvatar,
   useAvatarSession,
-  useTranscription,
   type SessionCredentials,
 } from "@runwayml/avatars-react";
 import { RoomEvent, Track } from "livekit-client";
@@ -56,7 +55,6 @@ type PodcastLiveSessionHandle = {
 
 const DEFAULT_PROMPT_VOICE_ID = "clara";
 const MAX_LIVE_TURNS = 12;
-const TURN_FINALIZE_DELAY_MS = 1600;
 
 function compactText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
@@ -68,22 +66,18 @@ function truncatePromptText(value: string, maxLength = 320) {
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-function buildOpeningPrompt(speaker: any, other: any, topic: string) {
+function buildDeliveryPrompt(character: any, response: string) {
   return truncatePromptText(
-    `Let's begin a live podcast between ${speaker.name} and ${other.name}. ` +
-      `The shared topic is: ${topic}. ${speaker.name}, open the conversation in two or three sentences, ` +
-      `stay fully in character, and speak directly to ${other.name}.`,
-    360
+    `Stay fully in character as ${character.name}. ` +
+      `Speak the following podcast reply naturally and conversationally. ` +
+      `Keep the meaning unchanged and do not add setup or explanation: "${truncatePromptText(response, 520)}"`,
+    760
   );
 }
 
-function buildReplyPrompt(speaker: any, other: any, topic: string, previousTurn: string) {
-  return truncatePromptText(
-    `You are continuing a live podcast with ${other.name}. ` +
-      `The shared topic is: ${topic}. ${other.name} just said: "${truncatePromptText(previousTurn, 220)}". ` +
-      `Reply directly in two or three sentences, stay in character, and keep the discussion moving.`,
-    420
-  );
+function estimateTurnPlaybackMs(text: string) {
+  const wordCount = compactText(text).split(/\s+/).filter(Boolean).length;
+  return Math.min(14_000, Math.max(3_500, Math.round(wordCount * 360 + 1_200)));
 }
 
 async function readResponse(response: Response) {
@@ -180,10 +174,9 @@ const PodcastSessionRuntime = forwardRef<
     character: any;
     active: boolean;
     onReadyChange: (ready: boolean) => void;
-    onAvatarText: (text: string) => void;
   }
 >(function PodcastSessionRuntime(
-  { character, active, onReadyChange, onAvatarText },
+  { character, active, onReadyChange },
   ref
 ) {
   const room = useRoomContext();
@@ -202,7 +195,6 @@ const PodcastSessionRuntime = forwardRef<
   const bridgeReadyRef = useRef(false);
   const readyRef = useRef(false);
   const queueRef = useRef(Promise.resolve());
-  const seenEntryIdsRef = useRef(new Set<string>());
 
   const setReadyState = useCallback(
     (next: boolean) => {
@@ -338,18 +330,6 @@ const PodcastSessionRuntime = forwardRef<
     };
   }, [cleanupBridge]);
 
-  useTranscription((entry) => {
-    const avatarIdentity = avatar.participant?.identity;
-    if (!entry.final || !avatarIdentity || entry.participantIdentity !== avatarIdentity) return;
-    if (seenEntryIdsRef.current.has(entry.id)) return;
-
-    seenEntryIdsRef.current.add(entry.id);
-    const text = compactText(entry.text);
-    if (text) {
-      onAvatarText(text);
-    }
-  });
-
   const playPrompt = useCallback(
     async (text: string, voiceId?: string) => {
       const normalized = compactText(text);
@@ -477,10 +457,9 @@ const PodcastSessionCard = forwardRef<
     character: any;
     active: boolean;
     onReadyChange: (speaker: SpeakerId, ready: boolean) => void;
-    onAvatarText: (speaker: SpeakerId, text: string) => void;
   }
 >(function PodcastSessionCard(
-  { speaker, character, active, onReadyChange, onAvatarText },
+  { speaker, character, active, onReadyChange },
   ref
 ) {
   const [attempt, setAttempt] = useState(0);
@@ -647,7 +626,6 @@ const PodcastSessionCard = forwardRef<
               character={character}
               active={active}
               onReadyChange={(ready) => onReadyChange(speaker, ready)}
-              onAvatarText={(text) => onAvatarText(speaker, text)}
             />
           </AvatarSession>
         ) : connection.status === "connecting" ? (
@@ -736,21 +714,16 @@ export function PodcastRunwayStage({
 }) {
   const sessionARef = useRef<PodcastLiveSessionHandle | null>(null);
   const sessionBRef = useRef<PodcastLiveSessionHandle | null>(null);
-  const currentTurnRef = useRef<{
+  const queuedSpeakerRef = useRef<{
     speaker: SpeakerId;
-    messageId: string;
-    text: string;
-  } | null>(null);
-  const queuedPromptRef = useRef<{
-    speaker: SpeakerId;
-    prompt: string;
-    voiceId: string;
     token: number;
   } | null>(null);
-  const silenceTimerRef = useRef<number | null>(null);
+  const turnAdvanceTimerRef = useRef<number | null>(null);
+  const requestAbortRef = useRef<AbortController | null>(null);
   const conversationTokenRef = useRef(0);
   const turnCountRef = useRef(0);
   const statusRef = useRef<LiveStatus>("idle");
+  const messagesRef = useRef<LiveTranscriptMessage[]>([]);
 
   const [sessionReady, setSessionReady] = useState<{ A: boolean; B: boolean }>({
     A: false,
@@ -765,24 +738,29 @@ export function PodcastRunwayStage({
     statusRef.current = status;
   }, [status]);
 
-  const clearSilenceTimer = useCallback(() => {
-    if (silenceTimerRef.current) {
-      window.clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const clearAdvanceTimer = useCallback(() => {
+    if (turnAdvanceTimerRef.current) {
+      window.clearTimeout(turnAdvanceTimerRef.current);
+      turnAdvanceTimerRef.current = null;
     }
   }, []);
 
   const resetConversation = useCallback(
     (nextStatus: LiveStatus) => {
       conversationTokenRef.current += 1;
-      clearSilenceTimer();
-      queuedPromptRef.current = null;
-      currentTurnRef.current = null;
+      clearAdvanceTimer();
+      queuedSpeakerRef.current = null;
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
       turnCountRef.current = 0;
       setActiveSpeaker(null);
       setStatus(nextStatus);
     },
-    [clearSilenceTimer]
+    [clearAdvanceTimer]
   );
 
   useEffect(() => {
@@ -808,24 +786,24 @@ export function PodcastRunwayStage({
     });
   }, []);
 
-  const speakPromptTo = useCallback(
-    async (speaker: SpeakerId, prompt: string, voiceId: string, token: number) => {
-      if (token !== conversationTokenRef.current) return;
+  const generateTurnText = useCallback(
+    async (speaker: SpeakerId, token: number) => {
+      if (token !== conversationTokenRef.current) return "";
 
-      const handle = getSessionHandle(speaker);
+      requestAbortRef.current?.abort();
+      const controller = new AbortController();
+      requestAbortRef.current = controller;
+
       const character = getCharacter(speaker);
-      if (!handle?.isReady()) {
-        throw new Error(`${character.name} is still warming up`);
-      }
+      const history = messagesRef.current
+        .filter((message) => compactText(message.content))
+        .map((message) => ({
+          speaker: message.speakerName,
+          content: message.content,
+        }))
+        .slice(-10);
 
       const messageId = `live-${speaker}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      currentTurnRef.current = {
-        speaker,
-        messageId,
-        text: "",
-      };
-
-      setActiveSpeaker(speaker);
       setMessages((current) => [
         ...current,
         {
@@ -837,120 +815,148 @@ export function PodcastRunwayStage({
         },
       ]);
 
-      await handle.prompt(prompt, voiceId);
+      const response = await fetch("/api/podcast/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterIdA: charA.id,
+          characterIdB: charB.id,
+          topic,
+          history,
+          speakerTurn: speaker,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const data = await readResponse(response);
+        throw new Error(data.error || "Failed to generate podcast turn");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Podcast turn stream was unavailable");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+
+      while (true) {
+        if (token !== conversationTokenRef.current) {
+          await reader.cancel().catch(() => undefined);
+          return "";
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() || "";
+
+        for (const frame of frames) {
+          const eventMatch = frame.match(/^event:\s*(.+)$/m);
+          const dataMatch = frame.match(/^data:\s*(.+)$/m);
+          if (!eventMatch || !dataMatch) continue;
+
+          const eventType = eventMatch[1].trim();
+          const payload = JSON.parse(dataMatch[1]);
+
+          if (eventType === "text" && typeof payload.text === "string") {
+            fullText += payload.text;
+            const nextText = compactText(fullText);
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === messageId
+                  ? { ...message, content: nextText, pending: true }
+                  : message
+              )
+            );
+          }
+
+          if (eventType === "error") {
+            throw new Error(payload.error || "Podcast generation failed");
+          }
+        }
+      }
+
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null;
+      }
+
+      const finalText = compactText(fullText);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? { ...message, content: finalText || "…", pending: false }
+            : message
+        )
+      );
+
+      return finalText;
+    },
+    [charA.id, charB.id, getCharacter, topic]
+  );
+
+  const runTurn = useCallback(
+    async (speaker: SpeakerId, token: number) => {
+      if (token !== conversationTokenRef.current) return;
+
+      const handle = getSessionHandle(speaker);
+      const character = getCharacter(speaker);
+      if (!handle?.isReady()) {
+        throw new Error(`${character.name} is still warming up`);
+      }
+
+      setActiveSpeaker(speaker);
+      if (turnCountRef.current === 0) {
+        setStatus("starting");
+      }
+
+      const generatedText = await generateTurnText(speaker, token);
+      if (token !== conversationTokenRef.current) return;
+
+      if (!compactText(generatedText)) {
+        throw new Error(`${character.name} did not produce a usable podcast turn`);
+      }
+
+      await handle.prompt(
+        buildDeliveryPrompt(character, generatedText),
+        DEFAULT_PROMPT_VOICE_ID
+      );
       if (token !== conversationTokenRef.current) return;
 
       if (statusRef.current !== "paused") {
         setStatus("active");
       }
-    },
-    [getCharacter, getSessionHandle]
-  );
-
-  const finalizeTurn = useCallback(
-    async (speaker: SpeakerId, token: number) => {
-      if (token !== conversationTokenRef.current) return;
-
-      const currentTurn = currentTurnRef.current;
-      if (!currentTurn || currentTurn.speaker !== speaker) return;
-
-      clearSilenceTimer();
-
-      const text = compactText(currentTurn.text);
-      const completedSpeaker = getCharacter(speaker);
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === currentTurn.messageId
-            ? {
-                ...message,
-                content: text || "…",
-                pending: false,
-              }
-            : message
-        )
-      );
-
-      currentTurnRef.current = null;
-      setActiveSpeaker(null);
-
-      if (!text) {
-        setStatus("error");
-        setLiveError(`${completedSpeaker.name} did not return a usable live transcript.`);
-        return;
-      }
 
       turnCountRef.current += 1;
       if (turnCountRef.current >= MAX_LIVE_TURNS) {
+        setActiveSpeaker(null);
         setStatus("ended");
         return;
       }
 
       const nextSpeaker = speaker === "A" ? "B" : "A";
-      const nextPrompt = buildReplyPrompt(
-        getCharacter(nextSpeaker),
-        completedSpeaker,
-        topic,
-        text
-      );
-      const nextVoiceId = DEFAULT_PROMPT_VOICE_ID;
-
-      if (statusRef.current === "paused") {
-        queuedPromptRef.current = {
-          speaker: nextSpeaker,
-          prompt: nextPrompt,
-          voiceId: nextVoiceId,
-          token,
-        };
-        return;
-      }
-
-      try {
-        await speakPromptTo(nextSpeaker, nextPrompt, nextVoiceId, token);
-      } catch (error: any) {
+      clearAdvanceTimer();
+      turnAdvanceTimerRef.current = window.setTimeout(() => {
         if (token !== conversationTokenRef.current) return;
-        setStatus("error");
-        setLiveError(error.message || "Failed to continue the Runway live podcast");
-      }
+
+        if (statusRef.current === "paused") {
+          queuedSpeakerRef.current = { speaker: nextSpeaker, token };
+          return;
+        }
+
+        void runTurn(nextSpeaker, token).catch((error: any) => {
+          if (token !== conversationTokenRef.current) return;
+          setActiveSpeaker(null);
+          setStatus("error");
+          setLiveError(error.message || "Failed to continue the Runway live podcast");
+        });
+      }, estimateTurnPlaybackMs(generatedText));
     },
-    [clearSilenceTimer, getCharacter, speakPromptTo, topic]
-  );
-
-  const handleAvatarText = useCallback(
-    (speaker: SpeakerId, text: string) => {
-      if (!conversationTokenRef.current) return;
-
-      const currentTurn = currentTurnRef.current;
-      if (!currentTurn || currentTurn.speaker !== speaker) return;
-
-      const nextText = compactText([currentTurn.text, text].filter(Boolean).join(" "));
-      currentTurnRef.current = {
-        ...currentTurn,
-        text: nextText,
-      };
-
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === currentTurn.messageId
-            ? {
-                ...message,
-                content: nextText,
-                pending: true,
-              }
-            : message
-        )
-      );
-
-      clearSilenceTimer();
-      const token = conversationTokenRef.current;
-      silenceTimerRef.current = window.setTimeout(() => {
-        void finalizeTurn(speaker, token);
-      }, TURN_FINALIZE_DELAY_MS);
-
-      if (statusRef.current !== "paused") {
-        setStatus("active");
-      }
-    },
-    [clearSilenceTimer, finalizeTurn]
+    [clearAdvanceTimer, generateTurnText, getCharacter, getSessionHandle]
   );
 
   const startLivePodcast = useCallback(async () => {
@@ -964,9 +970,10 @@ export function PodcastRunwayStage({
 
     const token = conversationTokenRef.current + 1;
     conversationTokenRef.current = token;
-    clearSilenceTimer();
-    queuedPromptRef.current = null;
-    currentTurnRef.current = null;
+    clearAdvanceTimer();
+    queuedSpeakerRef.current = null;
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
     turnCountRef.current = 0;
 
     setMessages([]);
@@ -975,35 +982,27 @@ export function PodcastRunwayStage({
     setStatus("starting");
 
     try {
-      await speakPromptTo(
-        "A",
-        buildOpeningPrompt(charA, charB, normalizedTopic),
-        DEFAULT_PROMPT_VOICE_ID,
-        token
-      );
+      await runTurn("A", token);
     } catch (error: any) {
       if (token !== conversationTokenRef.current) return;
+      setActiveSpeaker(null);
       setStatus("error");
       setLiveError(error.message || "Failed to start the Runway live podcast");
     }
-  }, [charA, charB, clearSilenceTimer, sessionReady.A, sessionReady.B, speakPromptTo, topic]);
+  }, [clearAdvanceTimer, runTurn, sessionReady.A, sessionReady.B, topic]);
 
   const togglePaused = useCallback(async () => {
     if (statusRef.current === "paused") {
       setStatus("active");
-      const queuedPrompt = queuedPromptRef.current;
-      queuedPromptRef.current = null;
-      if (!queuedPrompt) return;
+      const queuedSpeaker = queuedSpeakerRef.current;
+      queuedSpeakerRef.current = null;
+      if (!queuedSpeaker) return;
 
       try {
-        await speakPromptTo(
-          queuedPrompt.speaker,
-          queuedPrompt.prompt,
-          queuedPrompt.voiceId,
-          queuedPrompt.token
-        );
+        await runTurn(queuedSpeaker.speaker, queuedSpeaker.token);
       } catch (error: any) {
-        if (queuedPrompt.token !== conversationTokenRef.current) return;
+        if (queuedSpeaker.token !== conversationTokenRef.current) return;
+        setActiveSpeaker(null);
         setStatus("error");
         setLiveError(error.message || "Failed to resume the Runway live podcast");
       }
@@ -1013,7 +1012,7 @@ export function PodcastRunwayStage({
     if (statusRef.current === "starting" || statusRef.current === "active") {
       setStatus("paused");
     }
-  }, [speakPromptTo]);
+  }, [runTurn]);
 
   const restartLivePodcast = useCallback(() => {
     void startLivePodcast();
@@ -1047,7 +1046,6 @@ export function PodcastRunwayStage({
           character={charA}
           active={activeSpeaker === "A"}
           onReadyChange={handleReadyChange}
-          onAvatarText={handleAvatarText}
         />
 
         <aside className="flex flex-col justify-between rounded-[32px] border border-amber-200/70 bg-[linear-gradient(160deg,#fff7e2_0%,#fffdf7_58%,#ffffff_100%)] p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.42)]">
@@ -1139,7 +1137,6 @@ export function PodcastRunwayStage({
           character={charB}
           active={activeSpeaker === "B"}
           onReadyChange={handleReadyChange}
-          onAvatarText={handleAvatarText}
         />
         </div>
       </div>
