@@ -187,6 +187,7 @@ export async function updateCharacter(
     updates.runwayCharacterId === undefined
       ? currentRunwayCharacterId
       : updates.runwayCharacterId?.trim() || null;
+  const targetRunwayCharacterId = nextRunwayCharacterId;
   const nextName = updates.name ?? char.name;
   const nextBio = updates.bio ?? char.bio;
   const nextGreeting = updates.greeting ?? char.greeting;
@@ -194,22 +195,20 @@ export async function updateCharacter(
   const nextAvatarUrl =
     updates.avatarUrl === undefined ? char.avatarUrl : updates.avatarUrl?.trim() || null;
   const didRunwayCharacterIdChange = nextRunwayCharacterId !== currentRunwayCharacterId;
+  const didProfileChange =
+    nextName !== char.name ||
+    nextBio !== char.bio ||
+    nextGreeting !== char.greeting ||
+    nextPersonalityTone !== char.personalityTone ||
+    (nextAvatarUrl || null) !== (char.avatarUrl || null);
   const shouldSyncRunwayProfile =
-    !!currentRunwayCharacterId &&
-    !didRunwayCharacterIdChange &&
+    !!targetRunwayCharacterId &&
     env.RUNWAY_API_KEY &&
-    (
-      nextName !== char.name ||
-      nextBio !== char.bio ||
-      nextGreeting !== char.greeting ||
-      nextPersonalityTone !== char.personalityTone ||
-      (nextAvatarUrl || null) !== (char.avatarUrl || null)
-    );
+    didProfileChange;
   const shouldSyncRunwayKnowledge =
-    !!currentRunwayCharacterId &&
-    !didRunwayCharacterIdChange &&
+    !!targetRunwayCharacterId &&
     env.RUNWAY_API_KEY &&
-    updates.knowledgeSourceIds !== undefined;
+    (updates.knowledgeSourceIds !== undefined || didRunwayCharacterIdChange);
 
   const updated = await db.character.update({
     where: { id: characterId },
@@ -241,9 +240,9 @@ export async function updateCharacter(
   let runwayAvatarUpdated = false;
   let runwayKnowledgeUpdated = false;
 
-  if (shouldSyncRunwayProfile && currentRunwayCharacterId) {
+  if (shouldSyncRunwayProfile && targetRunwayCharacterId) {
     try {
-      const currentAvatar = await getRunwayAvatar(currentRunwayCharacterId);
+      const currentAvatar = await getRunwayAvatar(targetRunwayCharacterId);
       const preservedVoice = getRunwayAvatarVoiceConfig(currentAvatar);
 
       if (!preservedVoice) {
@@ -252,7 +251,7 @@ export async function updateCharacter(
         );
       }
 
-      await updateRunwayAvatar(currentRunwayCharacterId, {
+      await updateRunwayAvatar(targetRunwayCharacterId, {
         name: nextName,
         bio: nextBio,
         greeting: nextGreeting,
@@ -266,10 +265,13 @@ export async function updateCharacter(
     }
   }
 
-  if (shouldSyncRunwayKnowledge && currentRunwayCharacterId) {
+  if (shouldSyncRunwayKnowledge && targetRunwayCharacterId) {
     try {
-      const linkedSourceIds = await getLinkedSourceIds(characterId);
-      await syncRunwayKnowledgeToAvatar(currentRunwayCharacterId, userId, linkedSourceIds);
+      const linkedSourceIds =
+        updates.knowledgeSourceIds !== undefined
+          ? Array.from(new Set(updates.knowledgeSourceIds.filter(Boolean)))
+          : await getLinkedSourceIds(characterId);
+      await syncRunwayKnowledgeToAvatar(targetRunwayCharacterId, userId, linkedSourceIds);
       runwayKnowledgeUpdated = true;
     } catch (error: any) {
       runwaySyncErrors.push(error?.message || "Failed to sync Runway knowledge");
@@ -282,6 +284,7 @@ export async function updateCharacter(
       avatarUpdated: runwayAvatarUpdated,
       knowledgeUpdated: runwayKnowledgeUpdated,
       skippedBecauseLinkedIdChanged: didRunwayCharacterIdChange,
+      targetAvatarId: targetRunwayCharacterId,
       error: runwaySyncErrors.length > 0 ? runwaySyncErrors.join(" ") : null,
     },
   };

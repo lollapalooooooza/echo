@@ -364,8 +364,9 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
         });
       }
 
-      if (char.runwayCharacterId) {
-        await refreshRunwayAvatar(char.id);
+      const nextRunwayCharacterId = data.character?.runwayCharacterId || char.runwayCharacterId;
+      if (nextRunwayCharacterId) {
+        await refreshRunwayAvatar(data.character?.id || char.id);
       }
 
       if (data.runwaySync?.error) {
