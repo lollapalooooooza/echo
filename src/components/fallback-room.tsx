@@ -74,6 +74,7 @@ export function FallbackRoom({
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null);
   const [roomTheme, setRoomTheme] = useState<RoomTheme>("light");
   const [audioIssue, setAudioIssue] = useState("");
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [voiceEnergy, setVoiceEnergy] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -154,6 +155,7 @@ export function FallbackRoom({
     setSubtitle("");
     setConvId(null);
     setAudioIssue("");
+    setAudioBlocked(false);
     audioRef.current?.pause();
     stopVoiceVisualization();
   }, [character.id, stopVoiceVisualization]);
@@ -300,10 +302,43 @@ export function FallbackRoom({
     sample();
   }, [ensureVoiceVisualizer]);
 
+  const unlockAudioPlayback = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio || !audio.src) return;
+
+    try {
+      if (audioContextRef.current?.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+
+      audio.currentTime = 0;
+      await audio.play();
+      setAudioBlocked(false);
+      setAudioIssue("");
+    } catch {
+      setAudioBlocked(true);
+      setAudioIssue("Audio is ready, but the browser still needs a tap on Enable audio before it can play.");
+    }
+  }, []);
+
+  const warmAudioPlayback = useCallback(async () => {
+    if (audioContextRef.current?.state === "suspended") {
+      await audioContextRef.current.resume().catch(() => undefined);
+    }
+
+    if (audioBlocked && !speakerOff) {
+      await unlockAudioPlayback().catch(() => undefined);
+    }
+  }, [audioBlocked, speakerOff, unlockAudioPlayback]);
+
   useEffect(() => {
-    audioRef.current = new Audio();
+    const audio = audioRef.current;
+    if (!audio) return;
+
     const handleAudioPlay = () => {
       setSpeaking(true);
+      setAudioBlocked(false);
+      setAudioIssue("");
       void startVoiceVisualization();
     };
     const handleAudioPause = () => {
@@ -317,20 +352,21 @@ export function FallbackRoom({
     const handleAudioError = () => {
       setSpeaking(false);
       stopVoiceVisualization();
+      setAudioBlocked(false);
       setAudioIssue("Audio playback was blocked or failed in the browser.");
     };
 
-    audioRef.current.addEventListener("playing", handleAudioPlay);
-    audioRef.current.addEventListener("pause", handleAudioPause);
-    audioRef.current.addEventListener("ended", handleAudioEnd);
-    audioRef.current.addEventListener("error", handleAudioError);
+    audio.addEventListener("playing", handleAudioPlay);
+    audio.addEventListener("pause", handleAudioPause);
+    audio.addEventListener("ended", handleAudioEnd);
+    audio.addEventListener("error", handleAudioError);
 
     return () => {
-      audioRef.current?.pause();
-      audioRef.current?.removeEventListener("playing", handleAudioPlay);
-      audioRef.current?.removeEventListener("pause", handleAudioPause);
-      audioRef.current?.removeEventListener("ended", handleAudioEnd);
-      audioRef.current?.removeEventListener("error", handleAudioError);
+      audio.pause();
+      audio.removeEventListener("playing", handleAudioPlay);
+      audio.removeEventListener("pause", handleAudioPause);
+      audio.removeEventListener("ended", handleAudioEnd);
+      audio.removeEventListener("error", handleAudioError);
       if (audioUrlRef.current) {
         URL.revokeObjectURL(audioUrlRef.current);
       }
@@ -366,6 +402,7 @@ export function FallbackRoom({
       audioUrlRef.current = URL.createObjectURL(new Blob([audioBuffer], { type: "audio/mpeg" }));
       audioRef.current.src = audioUrlRef.current;
       audioRef.current.load();
+      setAudioBlocked(false);
       setAudioIssue("");
 
       try {
@@ -380,7 +417,8 @@ export function FallbackRoom({
         if (assistantId && transcriptText) {
           stopTranscriptReveal({ finalize: true, assistantId, text: transcriptText });
         }
-        setAudioIssue("Voice was generated, but the browser blocked autoplay. Tap the speaker and try again.");
+        setAudioBlocked(true);
+        setAudioIssue("Voice is ready. Tap Enable audio once to hear it.");
       }
     },
     [revealTranscriptWithAudio, speakerOff, stopTranscriptReveal, stopVoiceVisualization, waitForAudioReady]
@@ -478,6 +516,22 @@ export function FallbackRoom({
         .map((message) => (message.streaming ? { ...message, streaming: false } : message))
     );
   }, [stopTranscriptReveal, stopVoiceVisualization]);
+
+  const handleSpeakerToggle = useCallback(async () => {
+    if (!speakerOff) {
+      setSpeakerOff(true);
+      audioRef.current?.pause();
+      setSpeaking(false);
+      return;
+    }
+
+    setSpeakerOff(false);
+    setAudioIssue("");
+
+    if (audioBlocked) {
+      await unlockAudioPlayback();
+    }
+  }, [audioBlocked, speakerOff, unlockAudioPlayback]);
 
   const toggleListen = useCallback(() => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
@@ -707,6 +761,7 @@ export function FallbackRoom({
         "relative min-h-screen overflow-hidden transition-colors duration-500",
         isLight ? "bg-[#f8f6f1] text-slate-900" : "room-backdrop text-white"
       )}
+      onPointerDownCapture={() => void warmAudioPlayback()}
     >
       <div
         className={cn(
@@ -958,7 +1013,24 @@ export function FallbackRoom({
                   isLight ? "border-amber-200 bg-amber-50 text-amber-800" : "border-amber-300/20 bg-amber-300/10 text-amber-100"
                 )}
               >
-                {audioIssue}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span>{audioIssue}</span>
+                  {audioBlocked && !speakerOff && (
+                    <button
+                      type="button"
+                      onClick={() => void unlockAudioPlayback()}
+                      className={cn(
+                        "inline-flex h-9 items-center gap-2 rounded-full px-4 text-[12px] font-medium transition-colors",
+                        isLight
+                          ? "bg-white text-slate-700 shadow-sm hover:bg-slate-100"
+                          : "border border-white/10 bg-white/10 text-white hover:bg-white/15"
+                      )}
+                    >
+                      <Volume2 className="h-4 w-4" />
+                      Enable audio
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1025,15 +1097,7 @@ export function FallbackRoom({
               )}
 
               <button
-                onClick={() => {
-                  setSpeakerOff((current) => !current);
-                  if (!speakerOff) {
-                    audioRef.current?.pause();
-                    setSpeaking(false);
-                  } else {
-                    setAudioIssue("");
-                  }
-                }}
+                onClick={() => void handleSpeakerToggle()}
                 className={cn(
                   "inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors",
                   speakerOff
@@ -1254,6 +1318,8 @@ export function FallbackRoom({
           </aside>
         )}
       </div>
+
+      <audio ref={audioRef} className="hidden" playsInline preload="auto" />
     </div>
   );
 }

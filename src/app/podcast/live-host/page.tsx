@@ -611,7 +611,7 @@ export default function PodcastLiveHostPage() {
 
   if (!character || connection.status === "connecting") {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#f5efe3]">
+      <div className="h-screen w-screen bg-[#f5efe3]">
         <LiveCharacterPlaceholder character={character || {}} label="Starting session" />
       </div>
     );
@@ -619,8 +619,10 @@ export default function PodcastLiveHostPage() {
 
   if (connection.status !== "ready") {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#f5efe3] px-6 text-center text-sm text-rose-700">
-        {connection.status === "error" ? connection.error : "Runway live session ended"}
+      <div className="flex h-screen w-screen items-center justify-center bg-[#f5efe3] px-6">
+        <div className="max-w-sm rounded-[28px] border border-rose-200 bg-white/92 px-6 py-5 text-center text-sm text-rose-700 shadow-[0_16px_48px_rgba(15,23,42,0.08)]">
+          {connection.status === "error" ? connection.error : "Runway live session ended"}
+        </div>
       </div>
     );
   }

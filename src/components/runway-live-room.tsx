@@ -87,8 +87,8 @@ function CharacterPlaceholder({
   return (
     <div
       className={cn(
-        "relative flex h-full min-h-full items-center justify-center overflow-hidden rounded-[32px] border",
-        isLight ? "border-white/70 bg-[#f6f2ea]" : "border-white/10 bg-neutral-950"
+        "relative flex h-full min-h-full items-center justify-center overflow-hidden",
+        isLight ? "bg-[#f6f2ea]" : "bg-neutral-950"
       )}
     >
       {character.avatarUrl ? (
@@ -192,23 +192,6 @@ function RunwaySessionSurface({
   }, [room]);
 
   useEffect(() => {
-    if (session.state !== "active") return;
-    if (media.isMicEnabled || media.micError || !media.hasMic) return;
-
-    const timeoutId = window.setTimeout(() => {
-      void media.retryMic();
-    }, 450);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    media.hasMic,
-    media.isMicEnabled,
-    media.micError,
-    media.retryMic,
-    session.state,
-  ]);
-
-  useEffect(() => {
     if (!videoReady || session.state !== "active") {
       if (session.state !== "active") {
         sessionStartedAtRef.current = null;
@@ -258,23 +241,26 @@ function RunwaySessionSurface({
       }
     }
 
-    if (media.hasMic && (!media.isMicEnabled || media.micError)) {
+    if (!media.hasMic) return;
+
+    if (media.micError) {
       await media.retryMic().catch(() => undefined);
+      return;
+    }
+
+    if (!media.isMicEnabled) {
+      media.toggleMic();
     }
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col" onPointerDownCapture={() => void warmLiveSession()}>
-      <div
-        className={cn(
-          "relative flex min-h-0 flex-1 overflow-hidden rounded-[32px]",
-          videoReady
-            ? isLight
-              ? "bg-white/30 ring-1 ring-black/5"
-              : "bg-black/30 ring-1 ring-white/10"
-            : "bg-transparent"
-        )}
-      >
+        <div
+          className={cn(
+            "relative flex min-h-0 flex-1 overflow-hidden rounded-[32px] border",
+            isLight ? "border-white/70 bg-[#f6f2ea]" : "border-white/10 bg-neutral-950"
+          )}
+        >
         <div ref={avatarStageRef} className="absolute inset-0">
           <AvatarVideo>
             {(avatar) => (
@@ -369,7 +355,7 @@ function RunwaySessionSurface({
                       ? () => void media.retryMic()
                       : media.isMicEnabled
                         ? media.toggleMic
-                        : () => void media.retryMic()
+                        : media.toggleMic
                   }
                   label={
                     media.micError
@@ -599,12 +585,19 @@ export function RunwayLiveRoom({
             </div>
           ) : connection.status === "connecting" ? (
             <div className="h-full min-h-0">
-              <CharacterPlaceholder
-                character={character}
-                label="Starting live session"
-                detail="We are fetching fresh Runway credentials, warming up the avatar, and getting this room ready for a direct conversation."
-                theme={roomTheme}
-              />
+              <div
+                className={cn(
+                  "relative flex h-full min-h-0 overflow-hidden rounded-[32px] border",
+                  isLight ? "border-white/70 bg-[#f6f2ea]" : "border-white/10 bg-neutral-950"
+                )}
+              >
+                <CharacterPlaceholder
+                  character={character}
+                  label="Starting live session"
+                  detail="We are fetching fresh Runway credentials, warming up the avatar, and getting this room ready for a direct conversation."
+                  theme={roomTheme}
+                />
+              </div>
             </div>
           ) : (
             <div
