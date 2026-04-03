@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
 
   try {
     let preservedVoice = null;
+    const hadExistingAvatar = !!character.runwayCharacterId?.trim();
     if (character.runwayCharacterId?.trim()) {
       try {
         const currentAvatar = await getRunwayAvatar(character.runwayCharacterId.trim());
@@ -107,6 +108,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (hadExistingAvatar && !preservedVoice) {
+      return NextResponse.json(
+        {
+          error:
+            "Echo could not verify the current Runway voice for this linked avatar, so regeneration was blocked to avoid changing the avatar voice unexpectedly.",
+        },
+        { status: 409 }
+      );
+    }
+
     const avatar = await createRunwayAvatar({
       name: character.name,
       bio: character.bio,
@@ -115,7 +126,10 @@ export async function POST(req: NextRequest) {
       avatarUrl: character.avatarUrl.trim(),
       voice: preservedVoice,
       voicePreset:
-        normalizeRunwayLiveVoicePreset(body?.runwayVoicePreset) || DEFAULT_RUNWAY_LIVE_VOICE_PRESET,
+        hadExistingAvatar
+          ? undefined
+          : normalizeRunwayLiveVoicePreset(body?.runwayVoicePreset) ||
+            DEFAULT_RUNWAY_LIVE_VOICE_PRESET,
     });
 
     const runwayCharacterId = (avatar as any)?.id as string | undefined;

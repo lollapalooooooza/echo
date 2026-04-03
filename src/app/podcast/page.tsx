@@ -454,19 +454,13 @@ export default function PodcastPage() {
         }
       `}</style>
 
-      <header className="border-b border-border/40 bg-white/90 backdrop-blur-xl">
+      <header className="border-b border-[#ece5d9] bg-white/92">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-6">
           <div className="flex min-w-0 items-center gap-4">
             <BrandMark href="/" size="sm" />
-            <div className="hidden h-7 w-px bg-neutral-200 md:block" />
-            <div className="hidden min-w-0 md:block">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-600">
-                Podcast Studio
-              </p>
-              <p className="truncate text-sm text-slate-500">
-                Runway live first, chat box fallback second
-              </p>
-            </div>
+            <p className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-[#996026] md:block">
+              Podcast Studio
+            </p>
           </div>
 
           <div className="flex items-center gap-2">

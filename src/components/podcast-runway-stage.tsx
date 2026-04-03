@@ -27,28 +27,8 @@ function buildOpeningPrompt(character: any, otherCharacter: any, topic: string) 
     `${character.name} and ${otherCharacter.name} are discussing their biggest ideas and disagreements.`;
 
   return truncatePromptText(
-    `You are ${character.name} joining a live podcast with ${otherCharacter.name}. ` +
-      `Open the discussion about "${discussionTopic}" in two concise spoken sentences. ` +
-      `Address ${otherCharacter.name} naturally once, then stop so they can answer.`,
-    760
-  );
-}
-
-function buildReplyPrompt(
-  character: any,
-  otherCharacter: any,
-  heardText: string,
-  topic: string
-) {
-  const discussionTopic =
-    compactText(topic) ||
-    `${character.name} and ${otherCharacter.name} are in a live podcast discussion.`;
-
-  return truncatePromptText(
-    `You are ${character.name} in a live podcast with ${otherCharacter.name}. ` +
-      `The topic is "${discussionTopic}". ` +
-      `You just heard ${otherCharacter.name} say: "${truncatePromptText(heardText, 360)}" ` +
-      `Respond directly to that point in two or three concise spoken sentences, then stop so ${otherCharacter.name} can reply.`,
+    `Welcome to the podcast. ${character.name}, open the conversation with ${otherCharacter.name}. ` +
+      `Give your first take on "${discussionTopic}" in two concise spoken sentences, then pause for a reply.`,
     760
   );
 }
@@ -202,12 +182,7 @@ export function PodcastRunwayStage({
       }
 
       const nextSpeaker = speaker === "A" ? "B" : "A";
-      const nextPrompt = buildReplyPrompt(
-        getCharacter(nextSpeaker),
-        getCharacter(speaker),
-        normalized,
-        effectiveTopic
-      );
+      const nextPrompt = normalized;
       const token = conversationTokenRef.current;
 
       if (statusRef.current === "paused") {
@@ -284,7 +259,7 @@ export function PodcastRunwayStage({
   return (
     <div className="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col px-6 pb-6 pt-4">
       <div className="flex min-h-0 flex-1 items-center">
-        <div className="grid w-full gap-5 xl:grid-cols-2">
+        <div className="grid w-full gap-4 xl:grid-cols-2">
           <PodcastLiveHostFrame
             ref={sessionARef}
             hostId="A"
@@ -309,20 +284,20 @@ export function PodcastRunwayStage({
         </div>
       </div>
 
-      <section className="mt-5 shrink-0 rounded-[28px] border border-white/80 bg-white/84 px-5 py-4 shadow-[0_24px_80px_-56px_rgba(245,158,11,0.42)] backdrop-blur-xl">
+      <section className="mt-4 shrink-0 rounded-[24px] border border-[#e8dfd1] bg-white/92 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+            <div className="rounded-full bg-[#f7f0e3] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#996026]">
               {liveStatusLabel}
             </div>
-            <div className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm">
+            <div className="rounded-full border border-[#ece5d9] bg-white px-3 py-1 text-[11px] font-medium text-slate-500">
               Turns {turnCountRef.current} / {MAX_LIVE_TURNS}
             </div>
             {(status === "starting" || status === "active" || status === "paused") && (
               <button
                 type="button"
                 onClick={() => void togglePaused()}
-                className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
+                className="inline-flex h-9 items-center gap-2 rounded-full border border-[#ddd5c7] bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-[#faf7f1]"
               >
                 {status === "paused" ? (
                   <>
@@ -341,7 +316,7 @@ export function PodcastRunwayStage({
               <button
                 type="button"
                 onClick={restartLivePodcast}
-                className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-neutral-50"
+                className="inline-flex h-9 items-center gap-2 rounded-full border border-[#ddd5c7] bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-[#faf7f1]"
               >
                 <RotateCcw className="h-4 w-4" />
                 Restart
@@ -349,7 +324,7 @@ export function PodcastRunwayStage({
             )}
           </div>
           {activeSpeaker && (
-            <div className="rounded-full bg-orange-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-700">
+            <div className="rounded-full bg-[#fff3e8] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#b76317]">
               {getCharacter(activeSpeaker).name}
             </div>
           )}

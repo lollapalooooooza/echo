@@ -185,15 +185,13 @@ export const PodcastLiveHostFrame = forwardRef<
   return (
     <section
       className={cn(
-        "flex min-h-[30rem] flex-col rounded-[32px] border bg-white/82 p-3 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl transition-all duration-300",
-        active
-          ? "border-orange-300 shadow-[0_28px_90px_-48px_rgba(251,146,60,0.36)]"
-          : "border-white/80"
+        "flex min-h-[30rem] flex-col rounded-[28px] border bg-[#fcfaf6] p-3 transition-colors duration-300",
+        active ? "border-[#efb36c]" : "border-[#e8dfd1]"
       )}
     >
-      <div className="flex items-center justify-between gap-3 px-2 pb-3 pt-1">
+      <div className="flex items-center justify-between gap-3 px-1 pb-3 pt-1">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="h-10 w-10 overflow-hidden rounded-2xl border border-amber-200/70 bg-amber-50">
+          <div className="h-10 w-10 overflow-hidden rounded-2xl border border-[#eadfce] bg-[#f5eee2]">
             {character.avatarUrl ? (
               <img
                 src={character.avatarUrl}
@@ -213,32 +211,29 @@ export const PodcastLiveHostFrame = forwardRef<
             >
               {character.name}
             </p>
-            <p className="truncate text-[12px] font-medium capitalize text-slate-500">
-              {character.personalityTone}
-            </p>
           </div>
         </div>
         <div
           className={cn(
             "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
             ready
-              ? "bg-emerald-50 text-emerald-700"
+              ? "bg-[#ebf7ef] text-[#227a45]"
               : frameError
                 ? "bg-rose-50 text-rose-700"
-                : "bg-amber-50 text-amber-700"
+                : "bg-[#f7f0e3] text-[#996026]"
           )}
         >
           {ready ? "Live" : frameError ? "Issue" : "Warming"}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[22px] bg-[#efe8dd]">
         {frameError ? (
-          <div className="flex h-full min-h-[21rem] flex-col items-center justify-center rounded-[28px] border border-dashed border-amber-200 bg-[#fbf8f1] px-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+          <div className="flex h-full min-h-[24rem] flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f5e6cf] text-[#996026]">
               <Radio className="h-5 w-5" />
             </div>
-            <p className="mt-4 text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">
+            <p className="mt-4 text-sm font-semibold uppercase tracking-[0.2em] text-[#996026]">
               Live unavailable
             </p>
             <p className="mt-3 max-w-sm text-sm leading-6 text-slate-600">{frameError}</p>
@@ -258,7 +253,7 @@ export const PodcastLiveHostFrame = forwardRef<
             src={frameSrc}
             title={`${character.name} live host`}
             allow="autoplay; microphone"
-            className="h-full min-h-[21rem] w-full overflow-hidden rounded-[28px] border-0 bg-black"
+            className="h-full min-h-[24rem] w-full overflow-hidden border-0 bg-black"
           />
         )}
       </div>

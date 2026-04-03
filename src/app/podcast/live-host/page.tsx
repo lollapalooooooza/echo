@@ -112,9 +112,10 @@ function buildPodcastLivePersonality(character: any, partnerName: string, topic:
       bio ? `Stay grounded in this profile: ${bio}.` : null,
       `Keep your speaking style ${tone}, natural, and concise.`,
       `The discussion topic is: ${discussionTopic}.`,
+      `Every time you hear new speech, treat it as ${otherSpeaker} speaking directly to you on the live stage.`,
       `Listen carefully to what ${otherSpeaker} just said, then answer directly in two or three spoken sentences.`,
       `Do not monologue. Do not repeat the other speaker verbatim. Stop speaking after each turn so ${otherSpeaker} can respond.`,
-      "Treat every new audio input as the other speaker talking to you live on stage.",
+      "Do not wait for extra instructions after hearing the other host. Reply naturally as soon as they finish.",
     ]
       .filter(Boolean)
       .join(" "),
@@ -130,22 +131,30 @@ function LiveCharacterPlaceholder({
   label: string;
 }) {
   return (
-    <div className="relative flex h-full min-h-full items-center justify-center overflow-hidden rounded-[28px] bg-[#f5efe3]">
+    <div className="relative flex h-full min-h-full items-center justify-center overflow-hidden bg-[#efe8dd]">
       {character?.avatarUrl ? (
         <img
           src={character.avatarUrl}
           alt={character.name}
-          className="absolute inset-0 h-full w-full object-cover opacity-20 blur-[2px]"
+          className="absolute inset-0 h-full w-full object-cover opacity-18 blur-[2px]"
         />
       ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#ffffff,#f5efe3_58%,#e9dfd0_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#ffffff,#f0e7da_58%,#e4d9c9_100%)]" />
       )}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.18),rgba(245,239,227,0.92))]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.24),rgba(239,232,221,0.94))]" />
       <div className="relative z-10 flex max-w-md flex-col items-center px-6 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/76 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700 backdrop-blur-xl">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#996026] backdrop-blur-xl">
           <Loader2 className="h-4 w-4 animate-spin" />
           {label}
         </div>
+        {character?.name ? (
+          <p
+            className="mt-4 text-[clamp(1.4rem,2.3vw,2rem)] font-semibold tracking-[-0.04em] text-slate-900"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            {character.name}
+          </p>
+        ) : null}
       </div>
     </div>
   );
