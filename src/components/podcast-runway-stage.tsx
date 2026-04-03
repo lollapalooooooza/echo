@@ -21,6 +21,10 @@ import {
 import { RoomEvent, Track } from "livekit-client";
 
 import { cn } from "@/lib/utils";
+import {
+  PodcastLiveHostFrame,
+  type PodcastLiveHostHandle,
+} from "@/components/podcast-live-host-frame";
 
 type SpeakerId = "A" | "B";
 
@@ -690,8 +694,8 @@ export function PodcastRunwayStage({
   charB: any;
   topic: string;
 }) {
-  const sessionARef = useRef<PodcastLiveSessionHandle | null>(null);
-  const sessionBRef = useRef<PodcastLiveSessionHandle | null>(null);
+  const sessionARef = useRef<PodcastLiveHostHandle | null>(null);
+  const sessionBRef = useRef<PodcastLiveHostHandle | null>(null);
   const queuedSpeakerRef = useRef<{
     speaker: SpeakerId;
     token: number;
@@ -1029,17 +1033,17 @@ export function PodcastRunwayStage({
     <div className="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col px-6 pb-6 pt-4">
       <div className="flex min-h-0 flex-1 items-center">
         <div className="grid w-full gap-5 xl:grid-cols-2">
-        <PodcastSessionCard
+        <PodcastLiveHostFrame
           ref={sessionARef}
-          speaker="A"
+          hostId="A"
           character={charA}
           active={activeSpeaker === "A"}
           onReadyChange={handleReadyChange}
         />
 
-        <PodcastSessionCard
+        <PodcastLiveHostFrame
           ref={sessionBRef}
-          speaker="B"
+          hostId="B"
           character={charB}
           active={activeSpeaker === "B"}
           onReadyChange={handleReadyChange}
