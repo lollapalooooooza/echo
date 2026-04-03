@@ -585,6 +585,10 @@ const PodcastSessionCard = forwardRef<
             credentials={connection.credentials}
             audio={false}
             video={false}
+            __unstable_roomOptions={{
+              adaptiveStream: true,
+              dynacast: true,
+            }}
             onEnd={() => {
               onReadyChange(speaker, false);
               setConnection({ status: "ended" });
