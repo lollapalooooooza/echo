@@ -133,19 +133,24 @@ function LiveCharacterPlaceholder({
   return (
     <div className="relative flex h-full min-h-full items-center justify-center overflow-hidden bg-black">
       {character?.avatarUrl ? (
-        <img
-          src={character.avatarUrl}
-          alt={character.name}
-          className="absolute inset-0 block h-full w-full scale-[1.03] object-cover opacity-60 blur-[3px]"
-        />
+        <>
+          <div
+            className="absolute inset-0 scale-[1.14] bg-cover bg-center blur-[24px]"
+            style={{ backgroundImage: `url(${character.avatarUrl})` }}
+          />
+          <div
+            className="absolute inset-0 bg-cover bg-center opacity-48"
+            style={{ backgroundImage: `url(${character.avatarUrl})` }}
+          />
+        </>
       ) : (
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#74614c,#2d241a_42%,#000000_100%)]" />
       )}
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.26),rgba(0,0,0,0.68))]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.06),transparent_46%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.22),rgba(0,0,0,0.34))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_44%)]" />
       <div className="relative z-10 flex max-w-md flex-col items-center px-6 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-black/42 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/92 backdrop-blur-xl">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/28 bg-black/34 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-xl">
+          <Loader2 className="h-4 w-4 animate-spin text-white" />
           {label}
         </div>
         {character?.name ? (
@@ -178,10 +183,12 @@ function RunwayFrameVideo({
 
   if (hasVideoTrack) {
     return (
-      <VideoTrack
-        trackRef={avatar.videoTrackRef}
-        className="block h-full w-full bg-black object-cover"
-      />
+      <div className="h-full w-full overflow-hidden leading-none [&_.lk-participant-media-video]:h-full [&_.lk-participant-media-video]:w-full [&_.lk-participant-media-video]:overflow-hidden [&_.lk-participant-media-video>video]:block [&_.lk-participant-media-video>video]:h-full [&_.lk-participant-media-video>video]:w-full [&_.lk-participant-media-video>video]:object-cover">
+        <VideoTrack
+          trackRef={avatar.videoTrackRef}
+          className="block h-full w-full bg-black object-cover"
+        />
+      </div>
     );
   }
 
@@ -518,6 +525,8 @@ function PodcastHostRuntime({
 export default function PodcastLiveHostPage() {
   const [character, setCharacter] = useState<any>(null);
   const [connection, setConnection] = useState<ConnectionState>({ status: "connecting" });
+  const liveStageShellClass =
+    "h-screen w-screen overflow-hidden bg-black leading-none [&>.lk-room-container]:flex [&>.lk-room-container]:h-full [&>.lk-room-container]:w-full [&>.lk-room-container]:min-h-0 [&>.lk-room-container]:flex-col";
 
   const params = useMemo(() => {
     if (typeof window === "undefined") {
@@ -640,7 +649,7 @@ export default function PodcastLiveHostPage() {
   }
 
   return (
-    <div className={cn("h-screen w-screen overflow-hidden bg-black")}>
+    <div className={cn(liveStageShellClass)}>
       <AvatarSession
         credentials={connection.credentials}
         audio
