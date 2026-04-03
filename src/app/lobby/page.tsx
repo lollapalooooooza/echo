@@ -129,29 +129,19 @@ export default function LobbyPage() {
                   podcastMode ? "scale-[1.01]" : ""
                 )}
                 aria-label="Open podcast studio mode"
-              >
-                <img
-                  src="/podcasticon.png"
-                  alt="Enter podcast studio"
-                  className={cn(
-                    "block h-[118px] w-auto object-contain drop-shadow-[0_18px_28px_rgba(92,53,22,0.2)] transition-transform duration-300 group-hover:scale-[1.02] sm:h-[138px]",
-                    podcastMode ? "drop-shadow-[0_24px_38px_rgba(92,53,22,0.28)]" : ""
-                  )}
-                />
-                <span
-                  className={cn(
-                    "absolute right-4 top-4 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors",
-                    podcastMode
-                      ? "bg-emerald-100/95 text-emerald-700"
-                      : "bg-white/88 text-slate-700"
-                  )}
                 >
-                  {podcastMode ? `Open ${podcastSelection.length}/2` : "Studio"}
-                </span>
-              </button>
+                  <img
+                    src="/podcasticon.png"
+                    alt="Enter podcast studio"
+                    className={cn(
+                      "block h-[118px] w-auto object-contain drop-shadow-[0_18px_28px_rgba(92,53,22,0.2)] transition-transform duration-300 group-hover:scale-[1.02] sm:h-[138px]",
+                      podcastMode ? "drop-shadow-[0_24px_38px_rgba(92,53,22,0.28)]" : ""
+                    )}
+                  />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
         {/* Search + filters */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
