@@ -107,50 +107,48 @@ export default function LobbyPage() {
             <Sparkles className="h-4 w-4 text-muted-foreground" />
             <span className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">Character Lobby</span>
           </div>
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-col gap-3 md:flex-row md:items-end md:gap-5">
-                <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-                  Discover EchoNest characters.
-                </h1>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPodcastMode((current) => !current);
-                    setPodcastSelection([]);
-                    setPodcastTopic("");
-                  }}
-                  className={cn(
-                    "group relative inline-flex w-fit rounded-[28px] transition-transform duration-300 hover:-translate-y-1",
-                    podcastMode
-                      ? "scale-[1.01]"
-                      : ""
-                  )}
-                  aria-label="Open podcast studio mode"
-                >
-                  <img
-                    src="/podcasticon.png"
-                    alt="Enter podcast studio"
-                    className={cn(
-                      "block h-[112px] w-auto drop-shadow-[0_18px_28px_rgba(92,53,22,0.2)] transition-transform duration-300 group-hover:scale-[1.02] sm:h-[132px]",
-                      podcastMode ? "drop-shadow-[0_24px_38px_rgba(92,53,22,0.28)]" : ""
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "absolute right-4 top-4 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors",
-                      podcastMode
-                        ? "bg-emerald-100/95 text-emerald-700"
-                        : "bg-white/88 text-slate-700"
-                    )}
-                  >
-                    {podcastMode ? `Open ${podcastSelection.length}/2` : "Studio"}
-                  </span>
-                </button>
-              </div>
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-xl">
+              <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
+                Discover EchoNest characters.
+              </h1>
               <p className="mt-2 max-w-lg text-[15px] text-muted-foreground">
                 Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise.
               </p>
+            </div>
+            <div className="flex justify-end md:ml-8 md:flex-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setPodcastMode((current) => !current);
+                  setPodcastSelection([]);
+                  setPodcastTopic("");
+                }}
+                className={cn(
+                  "group relative inline-flex w-fit shrink-0 rounded-[28px] transition-transform duration-300 hover:-translate-y-1",
+                  podcastMode ? "scale-[1.01]" : ""
+                )}
+                aria-label="Open podcast studio mode"
+              >
+                <img
+                  src="/podcasticon.png"
+                  alt="Enter podcast studio"
+                  className={cn(
+                    "block h-[118px] w-auto object-contain drop-shadow-[0_18px_28px_rgba(92,53,22,0.2)] transition-transform duration-300 group-hover:scale-[1.02] sm:h-[138px]",
+                    podcastMode ? "drop-shadow-[0_24px_38px_rgba(92,53,22,0.28)]" : ""
+                  )}
+                />
+                <span
+                  className={cn(
+                    "absolute right-4 top-4 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                    podcastMode
+                      ? "bg-emerald-100/95 text-emerald-700"
+                      : "bg-white/88 text-slate-700"
+                  )}
+                >
+                  {podcastMode ? `Open ${podcastSelection.length}/2` : "Studio"}
+                </span>
+              </button>
             </div>
           </div>
         </div>
