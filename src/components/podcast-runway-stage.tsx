@@ -36,43 +36,6 @@ function compactText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
-function truncatePromptText(value: string, maxLength = 420) {
-  const normalized = compactText(value);
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function buildPodcastPersonality(
-  character: any,
-  partnerName: string,
-  topic: string
-) {
-  const speakerName = character?.name?.trim() || "the current speaker";
-  const otherSpeaker = partnerName.trim() || "the other host";
-  const bio = compactText(character?.bio || "");
-  const tone =
-    compactText(character?.personalityTone || "") || "conversational";
-  const discussionTopic =
-    compactText(topic) ||
-    `${speakerName} and ${otherSpeaker} are having a live podcast discussion.`;
-
-  return truncatePromptText(
-    [
-      `You are ${speakerName} in a live podcast conversation with ${otherSpeaker}.`,
-      bio ? `Stay grounded in this profile: ${bio}.` : null,
-      `Keep your speaking style ${tone}, natural, and concise.`,
-      `The discussion topic is: ${discussionTopic}.`,
-      `Every time you hear new speech, treat it as ${otherSpeaker} speaking directly to you on the live stage.`,
-      `Listen carefully to what ${otherSpeaker} just said, then answer directly in two or three spoken sentences.`,
-      `Do not monologue. Do not repeat the other speaker verbatim. Stop speaking after each turn so ${otherSpeaker} can respond.`,
-      "Do not wait for extra instructions after hearing the other host. Reply naturally as soon as they finish.",
-    ]
-      .filter(Boolean)
-      .join(" "),
-    760
-  );
-}
-
 function PodcastStagePlaceholder({
   character,
   label,
@@ -501,7 +464,6 @@ export function PodcastRunwayStage({
   const createSession = useCallback(
     async (
       character: any,
-      partner: any,
       setConn: (c: ConnectionState) => void,
       signal: AbortSignal
     ) => {
@@ -513,13 +475,6 @@ export function PodcastRunwayStage({
           body: JSON.stringify({
             characterId: character.id,
             maxDuration: 900,
-            enableClientEvents: false,
-            sessionPersonality: buildPodcastPersonality(
-              character,
-              partner.name,
-              effectiveTopic
-            ),
-            startScript: character.greeting?.trim() || `Hello, I'm ${character.name}. Let's discuss ${effectiveTopic}.`,
           }),
         });
         const data = await readResponse(res);
@@ -543,23 +498,23 @@ export function PodcastRunwayStage({
         }
       }
     },
-    [effectiveTopic]
+    []
   );
 
   // Fetch sessions when bridge is ready (user clicked Start)
   useEffect(() => {
     if (!bridge) return;
     const controller = new AbortController();
-    void createSession(charA, charB, setConnA, controller.signal);
+    void createSession(charA, setConnA, controller.signal);
     return () => controller.abort();
-  }, [bridge, attemptA, charA, charB, createSession]);
+  }, [bridge, attemptA, charA, createSession]);
 
   useEffect(() => {
     if (!bridge) return;
     const controller = new AbortController();
-    void createSession(charB, charA, setConnB, controller.signal);
+    void createSession(charB, setConnB, controller.signal);
     return () => controller.abort();
-  }, [bridge, attemptB, charA, charB, createSession]);
+  }, [bridge, attemptB, charB, createSession]);
 
   // Cleanup bridge on unmount
   useEffect(() => {

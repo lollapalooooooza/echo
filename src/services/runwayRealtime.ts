@@ -34,17 +34,26 @@ export async function createRealtimeSession(
   options?: CreateRealtimeSessionOptions
 ): Promise<{ id: string }> {
   const client = getRunwayClient();
-  const params = {
+  const params: Record<string, unknown> = {
     model: "gwm1_avatars",
     avatar: {
       type: "custom" as const,
       avatarId,
     },
     maxDuration,
-    personality: options?.personality,
-    startScript: options?.startScript,
-    ...(options?.enableClientEvents ? { tools: runwayClientEventTools } : {}),
   };
+
+  // Only send overrides if explicitly provided — otherwise let
+  // the avatar's own config on Runway (voice, personality, etc.) take effect.
+  if (options?.personality) {
+    params.personality = options.personality;
+  }
+  if (options?.startScript) {
+    params.startScript = options.startScript;
+  }
+  if (options?.enableClientEvents) {
+    params.tools = runwayClientEventTools;
+  }
 
   return client.realtimeSessions.create(params as any);
 }

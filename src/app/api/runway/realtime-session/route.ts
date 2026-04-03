@@ -11,7 +11,8 @@ import {
   getRealtimeSession,
   type RunwayRealtimeSession,
 } from "@/services/runwayRealtime";
-import { buildRunwaySessionPersonality } from "@/services/runwayVoice";
+// buildRunwaySessionPersonality removed — we now let the avatar's own
+// config on Runway (voice, personality, etc.) take effect by default.
 
 const DEFAULT_MAX_DURATION = 300;
 const SESSION_READY_TIMEOUT_MS = 30_000;
@@ -92,38 +93,46 @@ export async function POST(req: NextRequest) {
     const requestedStartScript = hasStartScriptOverride ? readOptionalString(body?.startScript) : "";
     let clientEventsEnabled = requestedClientEvents;
 
-    const buildSessionPersonality = (enableArticleTool: boolean) =>
-      requestedPersonality ||
-      buildRunwaySessionPersonality({
-        name: character.name,
-        bio: character.bio,
-        tone: character.personalityTone,
-        enableArticleTool,
-      });
+    // Build session options — only include overrides that are explicitly provided.
+    // Otherwise let the avatar's own config on Runway (voice, personality, etc.) take effect.
+    const sessionOptions: {
+      enableClientEvents: boolean;
+      personality?: string;
+      startScript?: string;
+    } = {
+      enableClientEvents: clientEventsEnabled,
+    };
+
+    // Only override personality if the caller explicitly sent one
+    if (requestedPersonality) {
+      sessionOptions.personality = requestedPersonality;
+    }
+
+    // Only override startScript if the caller explicitly sent one
+    if (hasStartScriptOverride && requestedStartScript) {
+      sessionOptions.startScript = requestedStartScript;
+    }
 
     let created;
 
     try {
-      created = await createRealtimeSession(character.runwayCharacterId.trim(), maxDuration, {
-        enableClientEvents: clientEventsEnabled,
-        personality: buildSessionPersonality(clientEventsEnabled),
-        startScript: hasStartScriptOverride
-          ? requestedStartScript || undefined
-          : character.greeting?.trim() || undefined,
-      });
+      created = await createRealtimeSession(
+        character.runwayCharacterId.trim(),
+        maxDuration,
+        sessionOptions
+      );
     } catch (error) {
       if (!clientEventsEnabled || !isToolCallingUnavailableError(error)) {
         throw error;
       }
 
       clientEventsEnabled = false;
-      created = await createRealtimeSession(character.runwayCharacterId.trim(), maxDuration, {
-        enableClientEvents: false,
-        personality: buildSessionPersonality(false),
-        startScript: hasStartScriptOverride
-          ? requestedStartScript || undefined
-          : character.greeting?.trim() || undefined,
-      });
+      sessionOptions.enableClientEvents = false;
+      created = await createRealtimeSession(
+        character.runwayCharacterId.trim(),
+        maxDuration,
+        sessionOptions
+      );
     }
     const deadline = Date.now() + SESSION_READY_TIMEOUT_MS;
     let liveSession: RunwayRealtimeSession | { id: string; status: "NOT_READY" } = {
