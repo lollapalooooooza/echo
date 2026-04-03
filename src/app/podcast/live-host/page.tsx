@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Volume2 } from "lucide-react";
 import { isTrackReference, useRoomContext } from "@livekit/components-react";
 import {
@@ -219,6 +219,15 @@ function PodcastHostRuntime({
     }> | null
   >(null);
   const queueRef = useRef(Promise.resolve());
+  const sessionRef = useRef(session);
+  const avatarRef = useRef(avatar);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    sessionRef.current = session;
+    avatarRef.current = avatar;
+    onErrorRef.current = onError;
+  });
 
   useEffect(() => {
     const syncAudioPlayback = () => {
@@ -291,12 +300,12 @@ function PodcastHostRuntime({
     }, TRANSCRIPT_FLUSH_DELAY_MS);
   });
 
-  const ensureAudioBridge = async () => {
-    if (session.state !== "active") {
+  const ensureAudioBridge = useCallback(async () => {
+    if (sessionRef.current.state !== "active") {
       throw new Error("Runway live session is not active yet");
     }
 
-    if (!avatar.participant) {
+    if (!avatarRef.current.participant) {
       throw new Error(`${character.name} is still joining the live room`);
     }
 
@@ -354,12 +363,14 @@ function PodcastHostRuntime({
 
     try {
       return await initPromise;
-    } finally {
+    } catch (error) {
+      // Only clear on failure so subsequent calls retry; on success keep it cached
       if (bridgeInitPromiseRef.current === initPromise) {
         bridgeInitPromiseRef.current = null;
       }
+      throw error;
     }
-  };
+  }, [character.name, room]);
 
   const warmLiveSession = async () => {
     try {
@@ -438,7 +449,7 @@ function PodcastHostRuntime({
         })
         .catch((error: any) => {
           const message = error?.message || "Failed to play live prompt";
-          onError(message);
+          onErrorRef.current(message);
           window.parent.postMessage(
             {
               type: "podcast-host-prompt-result",
@@ -456,7 +467,7 @@ function PodcastHostRuntime({
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [ensureAudioBridge, hostId, onError]);
+  }, [ensureAudioBridge, hostId]);
 
   useEffect(() => {
     return () => {
@@ -631,7 +642,7 @@ export default function PodcastLiveHostPage() {
     <div className={cn("h-screen w-screen overflow-hidden bg-black")}>
       <AvatarSession
         credentials={connection.credentials}
-        audio={false}
+        audio
         video={false}
         __unstable_roomOptions={{
           adaptiveStream: true,
