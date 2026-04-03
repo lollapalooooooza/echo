@@ -11,6 +11,7 @@ import {
   getRealtimeSession,
   type RunwayRealtimeSession,
 } from "@/services/runwayRealtime";
+import { buildRunwaySessionPersonality } from "@/services/runwayVoice";
 
 const DEFAULT_MAX_DURATION = 300;
 const SESSION_READY_TIMEOUT_MS = 30_000;
@@ -38,6 +39,21 @@ async function getAccessibleCharacter(characterId: string, userId?: string) {
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readOptionalString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isToolCallingUnavailableError(error: unknown) {
+  const message =
+    typeof error === "string"
+      ? error
+      : error && typeof error === "object" && "message" in error
+        ? String((error as any).message || "")
+        : "";
+
+  return /tool calling is coming soon for all organizations/i.test(message);
 }
 
 export async function POST(req: NextRequest) {
@@ -70,7 +86,45 @@ export async function POST(req: NextRequest) {
 
   try {
     const maxDuration = clampMaxDuration(body?.maxDuration);
-    const created = await createRealtimeSession(character.runwayCharacterId.trim(), maxDuration);
+    const requestedClientEvents = body?.enableClientEvents === true;
+    const requestedPersonality = readOptionalString(body?.sessionPersonality);
+    const hasStartScriptOverride = typeof body?.startScript === "string";
+    const requestedStartScript = hasStartScriptOverride ? readOptionalString(body?.startScript) : "";
+    let clientEventsEnabled = requestedClientEvents;
+
+    const buildSessionPersonality = (enableArticleTool: boolean) =>
+      requestedPersonality ||
+      buildRunwaySessionPersonality({
+        name: character.name,
+        bio: character.bio,
+        tone: character.personalityTone,
+        enableArticleTool,
+      });
+
+    let created;
+
+    try {
+      created = await createRealtimeSession(character.runwayCharacterId.trim(), maxDuration, {
+        enableClientEvents: clientEventsEnabled,
+        personality: buildSessionPersonality(clientEventsEnabled),
+        startScript: hasStartScriptOverride
+          ? requestedStartScript || undefined
+          : character.greeting?.trim() || undefined,
+      });
+    } catch (error) {
+      if (!clientEventsEnabled || !isToolCallingUnavailableError(error)) {
+        throw error;
+      }
+
+      clientEventsEnabled = false;
+      created = await createRealtimeSession(character.runwayCharacterId.trim(), maxDuration, {
+        enableClientEvents: false,
+        personality: buildSessionPersonality(false),
+        startScript: hasStartScriptOverride
+          ? requestedStartScript || undefined
+          : character.greeting?.trim() || undefined,
+      });
+    }
     const deadline = Date.now() + SESSION_READY_TIMEOUT_MS;
     let liveSession: RunwayRealtimeSession | { id: string; status: "NOT_READY" } = {
       id: created.id,
@@ -93,6 +147,7 @@ export async function POST(req: NextRequest) {
           serverUrl: credentials.url,
           token: credentials.token,
           roomName: credentials.roomName,
+          clientEventsEnabled,
         });
       }
 

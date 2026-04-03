@@ -34,6 +34,12 @@ type HostPromptResultMessage = {
   error?: string;
 };
 
+type HostUtteranceMessage = {
+  type: "podcast-host-utterance";
+  hostId: SpeakerId;
+  text: string;
+};
+
 function isHostStatusMessage(value: unknown): value is HostStatusMessage {
   return !!value && typeof value === "object" && (value as any).type === "podcast-host-status";
 }
@@ -42,15 +48,25 @@ function isHostPromptResultMessage(value: unknown): value is HostPromptResultMes
   return !!value && typeof value === "object" && (value as any).type === "podcast-host-prompt-result";
 }
 
+function isHostUtteranceMessage(value: unknown): value is HostUtteranceMessage {
+  return !!value && typeof value === "object" && (value as any).type === "podcast-host-utterance";
+}
+
 export const PodcastLiveHostFrame = forwardRef<
   PodcastLiveHostHandle,
   {
     hostId: SpeakerId;
     character: any;
+    topic: string;
+    partnerName: string;
     active: boolean;
     onReadyChange: (speaker: SpeakerId, ready: boolean) => void;
+    onUtterance: (speaker: SpeakerId, text: string) => void;
   }
->(function PodcastLiveHostFrame({ hostId, character, active, onReadyChange }, ref) {
+>(function PodcastLiveHostFrame(
+  { hostId, character, topic, partnerName, active, onReadyChange, onUtterance },
+  ref
+) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const pendingRequestsRef = useRef(
     new Map<
@@ -71,9 +87,11 @@ export const PodcastLiveHostFrame = forwardRef<
       characterId: character.id,
       host: hostId,
       attempt: String(attempt),
+      topic,
+      partnerName,
     });
     return `/podcast/live-host?${params.toString()}`;
-  }, [attempt, character.id, hostId]);
+  }, [attempt, character.id, hostId, partnerName, topic]);
 
   useEffect(() => {
     setReady(false);
@@ -107,13 +125,17 @@ export const PodcastLiveHostFrame = forwardRef<
           pending.reject(new Error(event.data.error || "Failed to play live prompt"));
         }
       }
+
+      if (isHostUtteranceMessage(event.data) && event.data.hostId === hostId) {
+        onUtterance(hostId, event.data.text);
+      }
     };
 
     window.addEventListener("message", handleMessage);
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [hostId, onReadyChange]);
+  }, [hostId, onReadyChange, onUtterance]);
 
   useEffect(() => {
     return () => {

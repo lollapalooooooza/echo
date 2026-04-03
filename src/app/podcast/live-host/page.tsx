@@ -9,6 +9,7 @@ import {
   VideoTrack,
   useAvatar,
   useAvatarSession,
+  useTranscription,
   type SessionCredentials,
 } from "@runwayml/avatars-react";
 import { RoomEvent, Track } from "livekit-client";
@@ -22,6 +23,8 @@ type ConnectionState =
   | { status: "ready"; credentials: SessionCredentials }
   | { status: "error"; error: string }
   | { status: "ended" };
+
+const TRANSCRIPT_FLUSH_DELAY_MS = 1200;
 
 function compactText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
@@ -79,6 +82,43 @@ function postHostStatus(hostId: HostId, ready: boolean, error?: string | null) {
       error: error || null,
     },
     window.location.origin
+  );
+}
+
+function postHostUtterance(hostId: HostId, text: string) {
+  if (typeof window === "undefined" || window.parent === window) return;
+  window.parent.postMessage(
+    {
+      type: "podcast-host-utterance",
+      hostId,
+      text,
+    },
+    window.location.origin
+  );
+}
+
+function buildPodcastLivePersonality(character: any, partnerName: string, topic: string) {
+  const speakerName = character?.name?.trim() || "the current speaker";
+  const otherSpeaker = partnerName.trim() || "the other host";
+  const bio = compactText(character?.bio || "");
+  const tone = compactText(character?.personalityTone || "") || "conversational";
+  const discussionTopic =
+    compactText(topic) ||
+    `${speakerName} and ${otherSpeaker} are having a live podcast discussion.`;
+
+  return truncatePromptText(
+    [
+      `You are ${speakerName} in a live podcast conversation with ${otherSpeaker}.`,
+      bio ? `Stay grounded in this profile: ${bio}.` : null,
+      `Keep your speaking style ${tone}, natural, and concise.`,
+      `The discussion topic is: ${discussionTopic}.`,
+      `Listen carefully to what ${otherSpeaker} just said, then answer directly in two or three spoken sentences.`,
+      `Do not monologue. Do not repeat the other speaker verbatim. Stop speaking after each turn so ${otherSpeaker} can respond.`,
+      "Treat every new audio input as the other speaker talking to you live on stage.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    760
   );
 }
 
@@ -160,6 +200,9 @@ function PodcastHostRuntime({
   const audioContextRef = useRef<AudioContext | null>(null);
   const destinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const publishedTrackRef = useRef<MediaStreamTrack | null>(null);
+  const pendingUtteranceRef = useRef("");
+  const flushTimerRef = useRef<number | null>(null);
+  const seenSegmentIdsRef = useRef<string[]>([]);
   const bridgeInitPromiseRef = useRef<
     Promise<{
       audioContext: AudioContext;
@@ -180,6 +223,19 @@ function PodcastHostRuntime({
     };
   }, [room]);
 
+  const flushUtterance = () => {
+    if (flushTimerRef.current) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+
+    const utterance = compactText(pendingUtteranceRef.current);
+    pendingUtteranceRef.current = "";
+    if (!utterance) return;
+
+    postHostUtterance(hostId, utterance);
+  };
+
   const cleanupBridge = async () => {
     bridgeInitPromiseRef.current = null;
     const publishedTrack = publishedTrackRef.current;
@@ -193,12 +249,38 @@ function PodcastHostRuntime({
     const context = audioContextRef.current;
     audioContextRef.current = null;
     destinationRef.current = null;
+    if (flushTimerRef.current) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pendingUtteranceRef.current = "";
+    seenSegmentIdsRef.current = [];
     if (context) {
       await context.close().catch(() => undefined);
     }
 
     postHostStatus(hostId, false);
   };
+
+  useTranscription((entry) => {
+    if (entry.participantIdentity !== avatar.participant?.identity) return;
+    const text = compactText(entry.text);
+    if (!text) return;
+    if (seenSegmentIdsRef.current.includes(entry.id)) return;
+
+    seenSegmentIdsRef.current = [...seenSegmentIdsRef.current.slice(-39), entry.id];
+    pendingUtteranceRef.current = compactText(
+      `${pendingUtteranceRef.current} ${text}`
+    );
+
+    if (flushTimerRef.current) {
+      window.clearTimeout(flushTimerRef.current);
+    }
+
+    flushTimerRef.current = window.setTimeout(() => {
+      flushUtterance();
+    }, TRANSCRIPT_FLUSH_DELAY_MS);
+  });
 
   const ensureAudioBridge = async () => {
     if (session.state !== "active") {
@@ -307,6 +389,7 @@ function PodcastHostRuntime({
       };
 
       const run = queueRef.current.then(async () => {
+        flushUtterance();
         const bridge = await ensureAudioBridge();
         const audioBuffer = await fetchPromptAudio(
           compactText(text),
@@ -368,6 +451,7 @@ function PodcastHostRuntime({
 
   useEffect(() => {
     return () => {
+      flushUtterance();
       void cleanupBridge();
     };
   }, []);
@@ -416,12 +500,14 @@ export default function PodcastLiveHostPage() {
 
   const params = useMemo(() => {
     if (typeof window === "undefined") {
-      return { characterId: "", hostId: "A" as HostId };
+      return { characterId: "", hostId: "A" as HostId, topic: "", partnerName: "" };
     }
     const search = new URLSearchParams(window.location.search);
     return {
       characterId: search.get("characterId") || "",
       hostId: (search.get("host") === "B" ? "B" : "A") as HostId,
+      topic: search.get("topic") || "",
+      partnerName: search.get("partnerName") || "",
     };
   }, []);
 
@@ -470,6 +556,13 @@ export default function PodcastLiveHostPage() {
           body: JSON.stringify({
             characterId: character.id,
             maxDuration: 900,
+            enableClientEvents: false,
+            sessionPersonality: buildPodcastLivePersonality(
+              character,
+              params.partnerName,
+              params.topic
+            ),
+            startScript: "",
           }),
         });
         const data = await readResponse(response);
@@ -505,7 +598,7 @@ export default function PodcastLiveHostPage() {
     return () => {
       cancelled = true;
     };
-  }, [character?.id, params.hostId]);
+  }, [character, params.hostId, params.partnerName, params.topic]);
 
   if (!character || connection.status === "connecting") {
     return (

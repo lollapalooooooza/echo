@@ -26,6 +26,7 @@ import {
 } from "@runwayml/avatars-react";
 import { RoomEvent } from "livekit-client";
 
+import { RunwayLiveOverlays } from "@/components/runway-live-overlays";
 import { cn } from "@/lib/utils";
 
 type RoomTheme = "light" | "dark";
@@ -33,7 +34,11 @@ const ROOM_THEME_STORAGE_KEY = "echonest-room-theme";
 
 type ConnectionState =
   | { status: "connecting" }
-  | { status: "ready"; credentials: SessionCredentials }
+  | {
+      status: "ready";
+      credentials: SessionCredentials;
+      clientEventsEnabled: boolean;
+    }
   | { status: "error"; error: string }
   | { status: "ended" };
 
@@ -158,9 +163,11 @@ function RunwayAvatarStage({
 function RunwaySessionSurface({
   character,
   theme,
+  clientEventsEnabled,
 }: {
   character: any;
   theme: RoomTheme;
+  clientEventsEnabled: boolean;
 }) {
   const session = useAvatarSession();
   const media = useLocalMedia();
@@ -280,6 +287,12 @@ function RunwaySessionSurface({
             )}
           </AvatarVideo>
         </div>
+
+        <RunwayLiveOverlays
+          character={character}
+          theme={theme}
+          clientEventsEnabled={clientEventsEnabled}
+        />
 
         {videoReady && (
           <>
@@ -470,7 +483,10 @@ export function RunwayLiveRoom({
         const response = await fetch("/api/runway/realtime-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ characterId: character.id }),
+          body: JSON.stringify({
+            characterId: character.id,
+            enableClientEvents: true,
+          }),
         });
         const data = await readResponse(response);
         if (!response.ok) throw new Error(data.error || "Failed to start Runway live session");
@@ -489,6 +505,7 @@ export function RunwayLiveRoom({
             token: data.token,
             roomName: data.roomName,
           },
+          clientEventsEnabled: !!data.clientEventsEnabled,
         });
       } catch (error: any) {
         if (!cancelled) {
@@ -573,7 +590,11 @@ export function RunwayLiveRoom({
                 onEnd={() => setConnection({ status: "ended" })}
                 onError={(error) => setConnection({ status: "error", error: error.message || "Runway live session ended unexpectedly" })}
               >
-                <RunwaySessionSurface character={character} theme={roomTheme} />
+                <RunwaySessionSurface
+                  character={character}
+                  theme={roomTheme}
+                  clientEventsEnabled={connection.clientEventsEnabled}
+                />
             </AvatarSession>
             </div>
           ) : connection.status === "connecting" ? (
