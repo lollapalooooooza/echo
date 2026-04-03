@@ -5,10 +5,12 @@ import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
+  Camera,
   Loader2,
   MessageCircleMore,
   Mic,
   MicOff,
+  MonitorUp,
   MoonStar,
   PhoneOff,
   RefreshCw,
@@ -19,6 +21,8 @@ import { isTrackReference, useRoomContext } from "@livekit/components-react";
 import {
   AvatarSession,
   AvatarVideo,
+  ControlBar,
+  UserVideo,
   VideoTrack,
   type SessionCredentials,
   useLocalMedia,
@@ -347,48 +351,63 @@ function RunwaySessionSurface({
 
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/16 via-black/4 to-transparent" />
 
-            <div className="absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
-              <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
-                <LiveControlButton
-                  onClick={
-                    media.micError
-                      ? () => void media.retryMic()
-                      : media.isMicEnabled
-                        ? media.toggleMic
-                        : media.toggleMic
-                  }
-                  label={
-                    media.micError
-                      ? "Retry microphone"
-                      : !media.hasMic
-                        ? "No microphone detected"
-                        : media.isMicEnabled
-                          ? "Turn microphone off"
-                          : "Turn microphone on"
-                  }
-                  icon={media.micError || !media.hasMic || !media.isMicEnabled ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                  variantClass={
-                    media.micError || !media.hasMic
-                      ? controlAlertClass
-                      : media.isMicEnabled
-                        ? controlActiveClass
-                        : controlInactiveClass
-                  }
-                />
-                <button
-                  type="button"
-                  onClick={() => void session.end()}
-                  aria-label="End live call"
-                  title="End live call"
-                  className={cn(
-                    "inline-flex h-14 w-14 items-center justify-center rounded-full text-white transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)]",
-                    theme === "light" ? "bg-[#ff5a36]/96 hover:bg-[#ff4b22]" : "bg-[#ff5a36]/92 hover:bg-[#ff4b22]"
+            <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
+              <div className="pointer-events-auto flex flex-wrap justify-center gap-3 sm:gap-4">
+                <ControlBar showScreenShare>
+                  {(controls) => (
+                    <>
+                      <LiveControlButton
+                        onClick={controls.toggleMic}
+                        label={controls.isMicEnabled ? "Mic on" : "Mic off"}
+                        icon={controls.isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                        variantClass={controls.isMicEnabled ? controlActiveClass : controlInactiveClass}
+                      />
+                      <LiveControlButton
+                        onClick={controls.toggleCamera}
+                        label={controls.isCameraEnabled ? "Camera on" : "Camera off"}
+                        icon={<Camera className="h-5 w-5" />}
+                        variantClass={controls.isCameraEnabled ? controlActiveClass : controlInactiveClass}
+                      />
+                      <LiveControlButton
+                        onClick={controls.toggleScreenShare}
+                        label={controls.isScreenShareEnabled ? "Sharing screen" : "Share screen"}
+                        icon={<MonitorUp className="h-5 w-5" />}
+                        variantClass={controls.isScreenShareEnabled ? controlActiveClass : controlInactiveClass}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void controls.endCall()}
+                        aria-label="End live call"
+                        title="End live call"
+                        className={cn(
+                          "inline-flex h-14 w-14 items-center justify-center rounded-full text-white transition-colors backdrop-blur-xl shadow-[0_4px_12px_rgba(15,23,42,0.12)]",
+                          theme === "light" ? "bg-[#ff5a36]/96 hover:bg-[#ff4b22]" : "bg-[#ff5a36]/92 hover:bg-[#ff4b22]"
+                        )}
+                      >
+                        <PhoneOff className="h-5 w-5" />
+                      </button>
+                    </>
                   )}
-                >
-                  <PhoneOff className="h-5 w-5" />
-                </button>
+                </ControlBar>
               </div>
             </div>
+
+            <UserVideo mirror>
+              {(user) =>
+                user.hasVideo && user.trackRef && isTrackReference(user.trackRef) ? (
+                  <div
+                    className={cn(
+                      "absolute bottom-24 right-5 z-20 h-28 w-20 overflow-hidden rounded-[20px] border backdrop-blur-sm sm:bottom-28 sm:right-6",
+                      isLight
+                        ? "border-white/72 bg-white/44 shadow-[0_4px_12px_rgba(15,23,42,0.08)]"
+                        : "border-white/16 bg-black/24 shadow-[0_4px_12px_rgba(0,0,0,0.16)]"
+                    )}
+                  >
+                    <VideoTrack trackRef={user.trackRef} className="h-full w-full object-cover" />
+                  </div>
+                ) : null
+              }
+            </UserVideo>
           </>
         )}
       </div>

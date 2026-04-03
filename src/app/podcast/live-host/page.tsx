@@ -214,6 +214,7 @@ function PodcastHostRuntime({
   const avatar = useAvatar();
   const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
   const [videoReady, setVideoReady] = useState(false);
+  const [bridgeReady, setBridgeReady] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const destinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const publishedTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -346,17 +347,24 @@ function PodcastHostRuntime({
           throw new Error("Unable to create podcast input audio track");
         }
 
-        const microphonePublication = room.localParticipant.getTrackPublication(
+        // Unpublish any SDK-auto-captured real microphone first so the avatar
+        // only hears our silent synthetic stream (prevents both hosts from
+        // responding to ambient mic noise simultaneously).
+        const existingMicPub = room.localParticipant.getTrackPublication(
           Track.Source.Microphone
         );
-        const publishedMediaTrackId =
-          microphonePublication?.track?.mediaStreamTrack?.id;
-
-        if (publishedMediaTrackId !== mediaTrack.id) {
-          await room.localParticipant.publishTrack(mediaTrack, {
-            source: Track.Source.Microphone,
-          });
+        if (existingMicPub?.track?.mediaStreamTrack && existingMicPub.track.mediaStreamTrack.id !== mediaTrack.id) {
+          try {
+            await room.localParticipant.unpublishTrack(existingMicPub.track.mediaStreamTrack, true);
+            existingMicPub.track.mediaStreamTrack.stop();
+          } catch {
+            // Best-effort; publishing our track below will replace it anyway
+          }
         }
+
+        await room.localParticipant.publishTrack(mediaTrack, {
+          source: Track.Source.Microphone,
+        });
 
         publishedTrackRef.current = mediaTrack;
       }
@@ -392,14 +400,27 @@ function PodcastHostRuntime({
     }
   };
 
+  // Eagerly initialise the audio bridge as soon as the session is active and
+  // the avatar participant has joined.  This replaces the SDK's real-microphone
+  // track with our silent synthetic stream so the avatar does NOT respond to
+  // ambient mic noise — it will only hear audio when we explicitly play TTS.
   useEffect(() => {
-    if (session.state === "active" && avatar.participant && videoReady) {
+    if (session.state !== "active" || !avatar.participant) return;
+    let cancelled = false;
+    ensureAudioBridge()
+      .then(() => { if (!cancelled) setBridgeReady(true); })
+      .catch(() => { /* will retry on first prompt */ });
+    return () => { cancelled = true; };
+  }, [session.state, avatar.participant, ensureAudioBridge]);
+
+  useEffect(() => {
+    if (session.state === "active" && avatar.participant && videoReady && bridgeReady) {
       postHostStatus(hostId, true);
       return;
     }
 
     postHostStatus(hostId, false);
-  }, [avatar.participant, hostId, session.state, videoReady]);
+  }, [avatar.participant, bridgeReady, hostId, session.state, videoReady]);
 
   useEffect(() => {
     const expectedOrigin = window.location.origin;
