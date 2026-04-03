@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Volume2 } from "lucide-react";
 import { isTrackReference, useRoomContext } from "@livekit/components-react";
 import {
   AvatarSession,
@@ -270,6 +270,18 @@ function PodcastHostRuntime({
     }
   };
 
+  const warmLiveSession = async () => {
+    try {
+      if (audioContextRef.current?.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+      await room.startAudio();
+      setCanPlaybackAudio(true);
+    } catch {
+      // Keep the wake control visible until the browser allows playback.
+    }
+  };
+
   useEffect(() => {
     if (session.state === "active" && avatar.participant && videoReady) {
       postHostStatus(hostId, true);
@@ -366,7 +378,10 @@ function PodcastHostRuntime({
   }, [room, session.state]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-[28px] bg-black">
+    <div
+      className="relative h-full w-full overflow-hidden rounded-[28px] bg-black"
+      onPointerDownCapture={() => void warmLiveSession()}
+    >
       <AvatarVideo>
         {(status) => {
           return (
@@ -380,10 +395,15 @@ function PodcastHostRuntime({
       </AvatarVideo>
 
       {!canPlaybackAudio && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
-          <div className="rounded-full bg-white/88 px-4 py-2 text-[12px] font-medium text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl">
-            Audio needs a user gesture in this frame
-          </div>
+        <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center px-4">
+          <button
+            type="button"
+            onClick={() => void warmLiveSession()}
+            className="inline-flex items-center gap-2 rounded-full bg-white/88 px-4 py-2 text-[12px] font-medium text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors hover:bg-white"
+          >
+            <Volume2 className="h-3.5 w-3.5" />
+            Enable live audio
+          </button>
         </div>
       )}
     </div>

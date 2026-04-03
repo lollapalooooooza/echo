@@ -647,44 +647,6 @@ const PodcastSessionCard = forwardRef<
   );
 });
 
-function LiveTranscriptBubble({
-  message,
-}: {
-  message: LiveTranscriptMessage;
-}) {
-  const alignRight = message.speaker === "B";
-
-  return (
-    <div
-      className={cn(
-        "flex",
-        alignRight ? "justify-end" : "justify-start"
-      )}
-    >
-      <div
-        className={cn(
-          "max-w-[85%] rounded-[24px] border px-4 py-3 shadow-sm",
-          alignRight
-            ? "border-orange-200 bg-orange-50"
-            : "border-neutral-200 bg-white"
-        )}
-      >
-        <p
-          className={cn(
-            "text-[11px] font-semibold uppercase tracking-[0.18em]",
-            alignRight ? "text-orange-700/75" : "text-slate-400"
-          )}
-        >
-          {message.speakerName}
-        </p>
-        <p className="mt-1.5 text-sm leading-6 text-slate-700">
-          {message.content || (message.pending ? "Listening…" : "…")}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export function PodcastRunwayStage({
   charA,
   charB,
@@ -1033,34 +995,26 @@ export function PodcastRunwayStage({
     <div className="mx-auto flex h-full w-full max-w-7xl flex-1 flex-col px-6 pb-6 pt-4">
       <div className="flex min-h-0 flex-1 items-center">
         <div className="grid w-full gap-5 xl:grid-cols-2">
-        <PodcastLiveHostFrame
-          ref={sessionARef}
-          hostId="A"
-          character={charA}
-          active={activeSpeaker === "A"}
-          onReadyChange={handleReadyChange}
-        />
+          <PodcastLiveHostFrame
+            ref={sessionARef}
+            hostId="A"
+            character={charA}
+            active={activeSpeaker === "A"}
+            onReadyChange={handleReadyChange}
+          />
 
-        <PodcastLiveHostFrame
-          ref={sessionBRef}
-          hostId="B"
-          character={charB}
-          active={activeSpeaker === "B"}
-          onReadyChange={handleReadyChange}
-        />
+          <PodcastLiveHostFrame
+            ref={sessionBRef}
+            hostId="B"
+            character={charB}
+            active={activeSpeaker === "B"}
+            onReadyChange={handleReadyChange}
+          />
         </div>
       </div>
 
-      <section className="mt-5 min-h-0 shrink-0 rounded-[32px] border border-white/80 bg-white/84 p-5 shadow-[0_28px_90px_-60px_rgba(245,158,11,0.45)] backdrop-blur-xl">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Live transcript
-            </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Two Runway live hosts are shown directly above. The conversation starts automatically once both sessions are ready.
-            </p>
-          </div>
+      <section className="mt-5 shrink-0 rounded-[28px] border border-white/80 bg-white/84 px-5 py-4 shadow-[0_24px_80px_-56px_rgba(245,158,11,0.42)] backdrop-blur-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
               {liveStatusLabel}
@@ -1098,6 +1052,11 @@ export function PodcastRunwayStage({
               </button>
             )}
           </div>
+          {activeSpeaker && (
+            <div className="rounded-full bg-orange-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-700">
+              {getCharacter(activeSpeaker).name}
+            </div>
+          )}
         </div>
 
         {liveError && (
@@ -1105,20 +1064,6 @@ export function PodcastRunwayStage({
             {liveError}
           </p>
         )}
-
-        <div className="mt-5 min-h-[14rem] space-y-4 overflow-y-auto pr-1">
-          {messages.length > 0 ? (
-            messages.map((message) => (
-              <LiveTranscriptBubble key={message.id} message={message} />
-            ))
-          ) : (
-            <div className="flex min-h-[14rem] items-center justify-center rounded-[28px] border border-dashed border-neutral-200 bg-[#faf7f0] px-6 text-center">
-              <p className="max-w-lg text-sm leading-7 text-slate-500">
-                Start the live podcast to watch both Runway avatars talk across the stage and stream their transcript here in real time.
-              </p>
-            </div>
-          )}
-        </div>
       </section>
     </div>
   );
