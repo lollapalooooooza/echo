@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 
 let _client: OpenAI | null = null;
 function openai(): OpenAI { if (!_client) _client = new OpenAI({ apiKey: env.OPENAI_API_KEY }); return _client; }
+const EMBEDDING_WRITE_BATCH_SIZE = 8;
 
 export async function embedText(text: string): Promise<number[]> {
   const res = await openai().embeddings.create({ model: env.OPENAI_EMBEDDING_MODEL, input: text.slice(0, 8000) });
@@ -24,13 +25,26 @@ export async function storeEmbeddings(chunks: { id: string; content: string }[])
   if (chunks.length === 0) return;
   console.log(`[Embed] Embedding ${chunks.length} chunks…`);
   const embeddings = await embedBatch(chunks.map((c) => c.content));
-  await db.$transaction(async (tx) => {
-    for (let index = 0; index < chunks.length; index += 1) {
-      const chunk = chunks[index];
-      const vecStr = `[${embeddings[index].join(",")}]`;
-      await tx.$executeRawUnsafe(`UPDATE "ContentChunk" SET embedding = $1::vector WHERE id = $2`, vecStr, chunk.id);
-    }
-  });
+
+  // Raw vector updates do not need a long-lived interactive transaction.
+  // Writing them in small batches avoids Prisma's "Transaction not found"
+  // failures during larger knowledge ingests while still surfacing any SQL error.
+  for (let offset = 0; offset < chunks.length; offset += EMBEDDING_WRITE_BATCH_SIZE) {
+    const batch = chunks.slice(offset, offset + EMBEDDING_WRITE_BATCH_SIZE);
+
+    await Promise.all(
+      batch.map((chunk, batchIndex) => {
+        const embedding = embeddings[offset + batchIndex];
+        const vecStr = `[${embedding.join(",")}]`;
+        return db.$executeRawUnsafe(
+          `UPDATE "ContentChunk" SET embedding = $1::vector WHERE id = $2`,
+          vecStr,
+          chunk.id
+        );
+      })
+    );
+  }
+
   console.log(`[Embed] ✓ Stored ${chunks.length} embeddings`);
 }
 

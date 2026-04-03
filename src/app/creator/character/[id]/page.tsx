@@ -67,6 +67,38 @@ function resolveAvailableVoiceSelection(
   return { voiceId: selectedVoiceId, voiceName: selectedVoiceName };
 }
 
+function resolveRunwayAlignedVoiceSelection(
+  avatar: any,
+  voiceLibrary: { presets?: any[]; custom?: any[] } | null | undefined
+) {
+  const voice = avatar?.voice;
+  if (!voice || typeof voice !== "object") {
+    return { shouldClear: false };
+  }
+
+  const voiceType = String((voice as any).type || "").trim();
+  if (voiceType === "custom") {
+    return { shouldClear: true };
+  }
+
+  const runwayPresetId =
+    typeof (voice as any).presetId === "string"
+      ? String((voice as any).presetId).trim()
+      : typeof (voice as any).id === "string"
+        ? String((voice as any).id).trim()
+        : "";
+
+  if (!runwayPresetId) {
+    return { shouldClear: true };
+  }
+
+  const presetMatch = Array.isArray(voiceLibrary?.presets)
+    ? voiceLibrary!.presets.some((entry) => String(entry.id || "").trim() === runwayPresetId)
+    : false;
+
+  return { shouldClear: !presetMatch };
+}
+
 export default function EditCharacterPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [char, setChar] = useState<any>(null);
@@ -207,6 +239,20 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
       const data = await readResponse(res);
       if (!res.ok) throw new Error(data.error || "Failed to load Runway avatar");
       setRunwayAvatar(data.avatar || null);
+      const runwayVoiceSelection = resolveRunwayAlignedVoiceSelection(data.avatar, voices);
+      if (runwayVoiceSelection.shouldClear) {
+        setChar((current: any) => {
+          if (!current || (!current.voiceId && !current.voiceName)) {
+            return current;
+          }
+
+          return {
+            ...current,
+            voiceId: "",
+            voiceName: "",
+          };
+        });
+      }
     } catch (e: any) {
       setRunwayAvatar(null);
       setRunwayAvatarError(e.message || "Failed to load Runway avatar");
@@ -223,6 +269,25 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
     }
     refreshRunwayAvatar(char.id);
   }, [char?.id, char?.runwayCharacterId]);
+
+  useEffect(() => {
+    if (!runwayAvatar || !char?.runwayCharacterId) return;
+
+    const runwayVoiceSelection = resolveRunwayAlignedVoiceSelection(runwayAvatar, voices);
+    if (!runwayVoiceSelection.shouldClear) return;
+
+    setChar((current: any) => {
+      if (!current || (!current.voiceId && !current.voiceName)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        voiceId: "",
+        voiceName: "",
+      };
+    });
+  }, [char?.runwayCharacterId, runwayAvatar, voices]);
 
   const regenerateRunwayAvatar = async () => {
     if (!char?.id) return;

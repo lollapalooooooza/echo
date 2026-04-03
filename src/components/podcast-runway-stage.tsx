@@ -73,6 +73,49 @@ function buildPodcastPersonality(
   );
 }
 
+function PodcastStagePlaceholder({
+  character,
+  label,
+}: {
+  character: any;
+  label: string;
+}) {
+  return (
+    <div className="relative flex h-full min-h-full items-center justify-center overflow-hidden bg-black">
+      {character?.avatarUrl ? (
+        <>
+          <div
+            className="absolute inset-0 scale-[1.14] bg-cover bg-center blur-[24px]"
+            style={{ backgroundImage: `url(${character.avatarUrl})` }}
+          />
+          <div
+            className="absolute inset-0 bg-cover bg-center opacity-48"
+            style={{ backgroundImage: `url(${character.avatarUrl})` }}
+          />
+        </>
+      ) : (
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#74614c,#2d241a_42%,#000000_100%)]" />
+      )}
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.22),rgba(0,0,0,0.34))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_44%)]" />
+      <div className="relative z-10 flex max-w-md flex-col items-center px-6 text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/28 bg-black/34 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-xl">
+          <Loader2 className="h-4 w-4 animate-spin text-white" />
+          {label}
+        </div>
+        {character?.name && (
+          <p
+            className="mt-4 text-[clamp(1.4rem,2.3vw,2rem)] font-semibold tracking-[-0.04em] text-white"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            {character.name}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 async function readResponse(response: Response) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) return response.json();
@@ -290,38 +333,10 @@ function PodcastHostInner({
           />
         </div>
       ) : (
-        <div className="relative flex h-full min-h-full items-center justify-center overflow-hidden bg-black">
-          {character?.avatarUrl ? (
-            <>
-              <div
-                className="absolute inset-0 scale-[1.14] bg-cover bg-center blur-[24px]"
-                style={{ backgroundImage: `url(${character.avatarUrl})` }}
-              />
-              <div
-                className="absolute inset-0 bg-cover bg-center opacity-48"
-                style={{ backgroundImage: `url(${character.avatarUrl})` }}
-              />
-            </>
-          ) : (
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#74614c,#2d241a_42%,#000000_100%)]" />
-          )}
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.22),rgba(0,0,0,0.34))]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_44%)]" />
-          <div className="relative z-10 flex max-w-md flex-col items-center px-6 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/28 bg-black/34 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-xl">
-              <Loader2 className="h-4 w-4 animate-spin text-white" />
-              {session.state === "active" ? "Preparing" : "Connecting"}
-            </div>
-            {character?.name && (
-              <p
-                className="mt-4 text-[clamp(1.4rem,2.3vw,2rem)] font-semibold tracking-[-0.04em] text-white"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                {character.name}
-              </p>
-            )}
-          </div>
-        </div>
+        <PodcastStagePlaceholder
+          character={character}
+          label={session.state === "active" ? "Preparing" : "Connecting"}
+        />
       )}
     </div>
   );
@@ -350,6 +365,8 @@ function HostCard({
 }) {
   const isReady = connection.status === "ready";
   const hasError = connection.status === "error";
+  const liveStageShellClass =
+    "[&>.lk-room-container]:flex [&>.lk-room-container]:h-full [&>.lk-room-container]:w-full [&>.lk-room-container]:min-h-0 [&>.lk-room-container]:flex-col";
 
   return (
     <section
@@ -398,7 +415,12 @@ function HostCard({
       </div>
 
       {/* Video area */}
-      <div className="relative min-h-[24rem] flex-1 overflow-hidden rounded-[26px] bg-black ring-1 ring-black/6">
+      <div
+        className={cn(
+          "relative min-h-[24rem] flex-1 overflow-hidden rounded-[26px] bg-black ring-1 ring-black/6",
+          liveStageShellClass
+        )}
+      >
         {hasError ? (
           <div className="flex h-full min-h-[24rem] flex-col items-center justify-center px-6 text-center">
             <p className="mt-4 text-sm font-semibold uppercase tracking-[0.2em] text-[#996026]">
@@ -434,12 +456,10 @@ function HostCard({
             />
           </AvatarSession>
         ) : (
-          <div className="flex h-full min-h-[24rem] items-center justify-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/28 bg-black/34 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-xl">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Starting session
-            </div>
-          </div>
+          <PodcastStagePlaceholder
+            character={character}
+            label="Starting session"
+          />
         )}
       </div>
     </section>
