@@ -8,6 +8,12 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
+import {
+  getRunwayAvatar,
+  getRunwayAvatarVoiceConfig,
+  updateRunwayAvatar,
+} from "@/services/runwayAvatar";
+import { syncRunwayKnowledgeToAvatar } from "@/services/runwayKnowledge";
 import { PRESET_VOICES } from "@/services/voiceService";
 
 // ── Runway API Configuration ─────────────────────────────────
@@ -176,6 +182,35 @@ export async function updateCharacter(
       ? { voiceDbId: undefined, voice: char.voice || null }
       : await resolveVoiceSelection(userId, updates.voiceId, updates.voiceName, { allowMissing: true });
 
+  const currentRunwayCharacterId = char.runwayCharacterId?.trim() || null;
+  const nextRunwayCharacterId =
+    updates.runwayCharacterId === undefined
+      ? currentRunwayCharacterId
+      : updates.runwayCharacterId?.trim() || null;
+  const nextName = updates.name ?? char.name;
+  const nextBio = updates.bio ?? char.bio;
+  const nextGreeting = updates.greeting ?? char.greeting;
+  const nextPersonalityTone = updates.personalityTone ?? char.personalityTone;
+  const nextAvatarUrl =
+    updates.avatarUrl === undefined ? char.avatarUrl : updates.avatarUrl?.trim() || null;
+  const didRunwayCharacterIdChange = nextRunwayCharacterId !== currentRunwayCharacterId;
+  const shouldSyncRunwayProfile =
+    !!currentRunwayCharacterId &&
+    !didRunwayCharacterIdChange &&
+    env.RUNWAY_API_KEY &&
+    (
+      nextName !== char.name ||
+      nextBio !== char.bio ||
+      nextGreeting !== char.greeting ||
+      nextPersonalityTone !== char.personalityTone ||
+      (nextAvatarUrl || null) !== (char.avatarUrl || null)
+    );
+  const shouldSyncRunwayKnowledge =
+    !!currentRunwayCharacterId &&
+    !didRunwayCharacterIdChange &&
+    env.RUNWAY_API_KEY &&
+    updates.knowledgeSourceIds !== undefined;
+
   const updated = await db.character.update({
     where: { id: characterId },
     data: {
@@ -185,7 +220,7 @@ export async function updateCharacter(
       personalityTone: updates.personalityTone,
       avatarUrl: updates.avatarUrl === undefined ? undefined : updates.avatarUrl?.trim() || null,
       voiceId: resolvedVoice.voiceDbId,
-      runwayCharacterId: updates.runwayCharacterId === undefined ? undefined : updates.runwayCharacterId?.trim() || null,
+      runwayCharacterId: updates.runwayCharacterId === undefined ? undefined : nextRunwayCharacterId,
       suggestedQuestions: updates.suggestedQuestions,
       status: updates.publish !== undefined ? (updates.publish ? "PUBLISHED" : "DRAFT") : undefined,
       allowedDomains: updates.allowedDomains,
@@ -202,7 +237,54 @@ export async function updateCharacter(
     }
   }
 
-  return updated;
+  const runwaySyncErrors: string[] = [];
+  let runwayAvatarUpdated = false;
+  let runwayKnowledgeUpdated = false;
+
+  if (shouldSyncRunwayProfile && currentRunwayCharacterId) {
+    try {
+      const currentAvatar = await getRunwayAvatar(currentRunwayCharacterId);
+      const preservedVoice = getRunwayAvatarVoiceConfig(currentAvatar);
+
+      if (!preservedVoice) {
+        throw new Error(
+          "Echo could not verify the current Runway voice for this linked avatar, so the Runway profile update was skipped to avoid changing its voice unexpectedly."
+        );
+      }
+
+      await updateRunwayAvatar(currentRunwayCharacterId, {
+        name: nextName,
+        bio: nextBio,
+        greeting: nextGreeting,
+        personalityTone: nextPersonalityTone,
+        avatarUrl: nextAvatarUrl || undefined,
+        voice: preservedVoice,
+      });
+      runwayAvatarUpdated = true;
+    } catch (error: any) {
+      runwaySyncErrors.push(error?.message || "Failed to update the linked Runway avatar");
+    }
+  }
+
+  if (shouldSyncRunwayKnowledge && currentRunwayCharacterId) {
+    try {
+      const linkedSourceIds = await getLinkedSourceIds(characterId);
+      await syncRunwayKnowledgeToAvatar(currentRunwayCharacterId, userId, linkedSourceIds);
+      runwayKnowledgeUpdated = true;
+    } catch (error: any) {
+      runwaySyncErrors.push(error?.message || "Failed to sync Runway knowledge");
+    }
+  }
+
+  return {
+    character: updated,
+    runwaySync: {
+      avatarUpdated: runwayAvatarUpdated,
+      knowledgeUpdated: runwayKnowledgeUpdated,
+      skippedBecauseLinkedIdChanged: didRunwayCharacterIdChange,
+      error: runwaySyncErrors.length > 0 ? runwaySyncErrors.join(" ") : null,
+    },
+  };
 }
 
 // ── Knowledge Source Linking ──────────────────────────────────

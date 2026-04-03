@@ -84,7 +84,7 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-    const updated = await updateCharacter(body.id, userId, {
+    const result = await updateCharacter(body.id, userId, {
       name: body.name,
       bio: body.bio,
       greeting: body.greeting,
@@ -100,7 +100,7 @@ export async function PUT(req: NextRequest) {
       widgetTheme: body.widgetTheme,
       widgetPosition: body.widgetPosition,
     });
-    return NextResponse.json(updated);
+    return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 404 });
   }

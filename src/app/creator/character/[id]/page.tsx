@@ -350,6 +350,27 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
       });
       const data = await readResponse(res);
       if (!res.ok) throw new Error(data.error || "Failed to save character");
+
+      if (data.character) {
+        setChar((current: any) => {
+          if (!current) return current;
+          return {
+            ...current,
+            ...data.character,
+            voiceId: current.voiceId,
+            voiceName: current.voiceName,
+            knowledgeSourceIds: current.knowledgeSourceIds,
+          };
+        });
+      }
+
+      if (char.runwayCharacterId) {
+        await refreshRunwayAvatar(char.id);
+      }
+
+      if (data.runwaySync?.error) {
+        alert(`Saved locally, but Runway did not fully update: ${data.runwaySync.error}`);
+      }
     } catch (e: any) {
       alert(e.message || "Failed to save character");
     } finally {
