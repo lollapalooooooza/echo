@@ -9,6 +9,7 @@ import { storeEmbeddings } from "./embeddings";
 
 const MAX_CONCURRENT_CHUNK_STORES = 1;
 const WEBSITE_CRAWL_CONCURRENCY = 2;
+export const MAX_KNOWLEDGE_SOURCE_CHARS = 200_000;
 
 let activeChunkStores = 0;
 const chunkStoreWaiters: Array<() => void> = [];
@@ -29,6 +30,17 @@ async function withChunkStoreSlot<T>(task: () => Promise<T>): Promise<T> {
     const next = chunkStoreWaiters.shift();
     if (next) next();
   }
+}
+
+function ensureKnowledgeWithinCharLimit(text: string, label: string) {
+  const characterCount = text.length;
+  if (characterCount <= MAX_KNOWLEDGE_SOURCE_CHARS) {
+    return;
+  }
+
+  throw new Error(
+    `${label} is too large to ingest. Knowledge uploads are limited to ${MAX_KNOWLEDGE_SOURCE_CHARS.toLocaleString()} characters after text extraction.`
+  );
 }
 
 // ── Text Chunking ────────────────────────────────────────────
@@ -249,6 +261,7 @@ export async function ingestUrl(url: string, userId: string): Promise<string> {
 
   try {
     const scrapeResult = await scrapeUrl(url, { mode: "stealth" });
+    ensureKnowledgeWithinCharLimit(scrapeResult.content, `The page at ${url}`);
     console.log(`[Ingest] Scraped: "${scrapeResult.title}" (${scrapeResult.wordCount} words, via ${scrapeResult.fetchMethod})`);
 
     const summaryMeta = await summarizeKnowledgeSource({
@@ -292,6 +305,7 @@ export async function ingestUrl(url: string, userId: string): Promise<string> {
 }
 
 export async function ingestText(title: string, text: string, userId: string): Promise<string> {
+  ensureKnowledgeWithinCharLimit(text, `Text source "${title || "Untitled"}"`);
   const summaryMeta = await summarizeKnowledgeSource({
     title,
     text,
@@ -413,6 +427,7 @@ export function ingestWebsiteWithProgress(
 
           try {
             const result = await scrapeUrl(url, { mode: "stealth" });
+            ensureKnowledgeWithinCharLimit(result.content, `The page at ${url}`);
             const heuristic = detectTopic(result.content, result.title);
 
             await db.knowledgeSource.update({
@@ -555,6 +570,7 @@ export async function ingestFile(buffer: Buffer, filename: string, userId: strin
     const { parseFile } = await import("./file-parser");
     const { text, title } = await parseFile(buffer, filename);
     if (!text || text.trim().length < 10) throw new Error("File contained no extractable text");
+    ensureKnowledgeWithinCharLimit(text, `File "${filename}"`);
     console.log(`[Ingest] Parsed: "${title}" (${text.split(/\s+/).length} words)`);
 
     const topic = detectTopic(text, title);

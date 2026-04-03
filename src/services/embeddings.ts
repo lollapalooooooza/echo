@@ -4,7 +4,23 @@ import { db } from "@/lib/db";
 
 let _client: OpenAI | null = null;
 function openai(): OpenAI { if (!_client) _client = new OpenAI({ apiKey: env.OPENAI_API_KEY }); return _client; }
-const EMBEDDING_WRITE_BATCH_SIZE = 8;
+const EMBEDDING_WRITE_RETRY_LIMIT = 3;
+const EMBEDDING_WRITE_RETRY_DELAY_MS = 250;
+
+function isRetryableEmbeddingWriteError(error: unknown) {
+  const message =
+    typeof error === "string"
+      ? error
+      : error && typeof error === "object" && "message" in error
+        ? String((error as any).message || "")
+        : "";
+
+  return /Transaction API error: Transaction not found/i.test(message);
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function embedText(text: string): Promise<number[]> {
   const res = await openai().embeddings.create({ model: env.OPENAI_EMBEDDING_MODEL, input: text.slice(0, 8000) });
@@ -26,23 +42,31 @@ export async function storeEmbeddings(chunks: { id: string; content: string }[])
   console.log(`[Embed] Embedding ${chunks.length} chunks…`);
   const embeddings = await embedBatch(chunks.map((c) => c.content));
 
-  // Raw vector updates do not need a long-lived interactive transaction.
-  // Writing them in small batches avoids Prisma's "Transaction not found"
-  // failures during larger knowledge ingests while still surfacing any SQL error.
-  for (let offset = 0; offset < chunks.length; offset += EMBEDDING_WRITE_BATCH_SIZE) {
-    const batch = chunks.slice(offset, offset + EMBEDDING_WRITE_BATCH_SIZE);
+  // Keep raw vector writes fully sequential. This is slower than small parallel
+  // batches, but it avoids Prisma engine state issues we were still seeing in
+  // production during large knowledge ingests.
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
+    const embedding = embeddings[index];
+    const vecStr = `[${embedding.join(",")}]`;
+    let attempt = 0;
 
-    await Promise.all(
-      batch.map((chunk, batchIndex) => {
-        const embedding = embeddings[offset + batchIndex];
-        const vecStr = `[${embedding.join(",")}]`;
-        return db.$executeRawUnsafe(
+    while (true) {
+      try {
+        await db.$executeRawUnsafe(
           `UPDATE "ContentChunk" SET embedding = $1::vector WHERE id = $2`,
           vecStr,
           chunk.id
         );
-      })
-    );
+        break;
+      } catch (error) {
+        attempt += 1;
+        if (!isRetryableEmbeddingWriteError(error) || attempt >= EMBEDDING_WRITE_RETRY_LIMIT) {
+          throw error;
+        }
+        await wait(EMBEDDING_WRITE_RETRY_DELAY_MS * attempt);
+      }
+    }
   }
 
   console.log(`[Embed] ✓ Stored ${chunks.length} embeddings`);

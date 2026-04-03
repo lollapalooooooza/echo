@@ -39,6 +39,7 @@ const typeCfg: Record<string, { label: string; color: string; icon: any }> = {
   TEXT: { label: "Text", color: "bg-amber-50 text-amber-700", icon: Type },
   WEBSITE: { label: "Website", color: "bg-purple-50 text-purple-700", icon: Globe },
 };
+const MAX_KNOWLEDGE_SOURCE_CHARS = 200000;
 
 async function readResponse(response: Response) {
   const contentType = response.headers.get("content-type") || "";
@@ -129,6 +130,11 @@ export default function KnowledgePage() {
   }, [selectedItem]);
 
   const ingest = async (body: any) => {
+    if (body.type === "text" && typeof body.text === "string" && body.text.length > MAX_KNOWLEDGE_SOURCE_CHARS) {
+      alert(`Text knowledge is limited to ${MAX_KNOWLEDGE_SOURCE_CHARS.toLocaleString()} characters.`);
+      return;
+    }
+
     if (body.type === "website") {
       await startWebsiteCrawl(body.url);
       return;
@@ -574,8 +580,14 @@ export default function KnowledgePage() {
         <div className="space-y-3 rounded-xl border border-border bg-white p-4">
           <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" className="h-9 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" />
           <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Paste content…" rows={4} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" />
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>Text knowledge is limited to {MAX_KNOWLEDGE_SOURCE_CHARS.toLocaleString()} characters.</span>
+            <span className={cn(text.length > MAX_KNOWLEDGE_SOURCE_CHARS ? "text-red-600" : "")}>
+              {text.length.toLocaleString()} / {MAX_KNOWLEDGE_SOURCE_CHARS.toLocaleString()}
+            </span>
+          </div>
           <div className="flex gap-2">
-            <button disabled={ingesting || !title.trim() || !text.trim()} onClick={() => ingest({ type: "text", title, text })} className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{ingesting ? "Processing…" : "Add"}</button>
+            <button disabled={ingesting || !title.trim() || !text.trim() || text.length > MAX_KNOWLEDGE_SOURCE_CHARS} onClick={() => ingest({ type: "text", title, text })} className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">{ingesting ? "Processing…" : "Add"}</button>
             <button onClick={() => setAddMode(null)} className="text-xs text-muted-foreground">Cancel</button>
           </div>
         </div>

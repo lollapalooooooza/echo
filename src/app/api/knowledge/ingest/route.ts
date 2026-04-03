@@ -55,9 +55,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "type must be url, text, or website" }, { status: 400 });
   } catch (err: any) {
     console.error("[Ingest API] Error:", err.message);
+    const status =
+      /limited to 200,000 characters|too large to ingest/i.test(err.message || "")
+        ? 400
+        : 500;
     return NextResponse.json({
       error: err.message,
       blocked: err.message?.includes("blocked access"),
-    }, { status: 500 });
+    }, { status });
   }
 }

@@ -7,6 +7,7 @@ export const maxDuration = 120;
 
 const ALLOWED_EXTENSIONS = ["pdf", "docx", "pptx", "txt", "md"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_KNOWLEDGE_SOURCE_CHARS = 200_000;
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -40,7 +41,12 @@ export async function POST(req: NextRequest) {
       const sourceId = await ingestFile(buffer, file.name, userId);
       results.push({ filename: file.name, sourceId });
     } catch (err: any) {
-      results.push({ filename: file.name, error: err.message });
+      results.push({
+        filename: file.name,
+        error:
+          err.message ||
+          `File could not be ingested. Knowledge uploads are limited to ${MAX_KNOWLEDGE_SOURCE_CHARS.toLocaleString()} extracted characters.`,
+      });
     }
   }
 
