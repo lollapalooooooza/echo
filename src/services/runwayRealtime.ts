@@ -55,6 +55,13 @@ export async function createRealtimeSession(
     params.tools = runwayClientEventTools;
   }
 
+  console.log(`[runway-realtime] Creating session for avatar ${avatarId}`, {
+    maxDuration,
+    hasPersonality: !!params.personality,
+    hasStartScript: !!params.startScript,
+    hasTools: !!params.tools,
+  });
+
   return client.realtimeSessions.create(params as any);
 }
 

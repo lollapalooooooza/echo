@@ -134,30 +134,65 @@ export async function POST(req: NextRequest) {
         sessionOptions
       );
     }
+    console.log(`[runway-session] Created session ${created.id}, polling for READY…`);
+
     const deadline = Date.now() + SESSION_READY_TIMEOUT_MS;
     let liveSession: RunwayRealtimeSession | { id: string; status: "NOT_READY" } = {
       id: created.id,
       status: "NOT_READY",
     };
+    let lastPollError: string | null = null;
+    let consecutivePollErrors = 0;
 
     let nextPollDelayMs = INITIAL_SESSION_POLL_INTERVAL_MS;
 
     while (Date.now() < deadline) {
       try {
         liveSession = await getRealtimeSession(created.id);
-      } catch {
+        consecutivePollErrors = 0;
+        lastPollError = null;
+      } catch (pollErr: any) {
+        consecutivePollErrors++;
+        lastPollError = pollErr?.message || String(pollErr);
+        console.error(
+          `[runway-session] Poll error #${consecutivePollErrors} for ${created.id}:`,
+          lastPollError
+        );
+        // Bail early if the retrieve call is consistently failing
+        if (consecutivePollErrors >= 5) {
+          return NextResponse.json(
+            {
+              error: `Runway session polling failed repeatedly: ${lastPollError}`,
+              sessionId: created.id,
+            },
+            { status: 502 }
+          );
+        }
         liveSession = { id: created.id, status: "NOT_READY" };
       }
 
+      console.log(`[runway-session] ${created.id} status: ${liveSession.status}`);
+
       if (liveSession.status === "READY") {
-        const credentials = await consumeRealtimeSession(liveSession.id, liveSession.sessionKey);
-        return NextResponse.json({
-          sessionId: liveSession.id,
-          serverUrl: credentials.url,
-          token: credentials.token,
-          roomName: credentials.roomName,
-          clientEventsEnabled,
-        });
+        try {
+          const credentials = await consumeRealtimeSession(liveSession.id, liveSession.sessionKey);
+          return NextResponse.json({
+            sessionId: liveSession.id,
+            serverUrl: credentials.url,
+            token: credentials.token,
+            roomName: credentials.roomName,
+            clientEventsEnabled,
+          });
+        } catch (consumeErr: any) {
+          console.error(`[runway-session] Consume failed for ${created.id}:`, consumeErr?.message);
+          return NextResponse.json(
+            {
+              error: `Session was ready but consume failed: ${consumeErr?.message || "unknown error"}`,
+              sessionId: created.id,
+            },
+            { status: 502 }
+          );
+        }
       }
 
       if (liveSession.status === "FAILED") {
@@ -180,6 +215,18 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // RUNNING means someone already consumed the session (shouldn't happen
+      // in normal flow but handle it gracefully)
+      if (liveSession.status === "RUNNING") {
+        return NextResponse.json(
+          {
+            error: "Runway live session was already consumed by another client",
+            session: liveSession,
+          },
+          { status: 409 }
+        );
+      }
+
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) break;
 
@@ -187,10 +234,16 @@ export async function POST(req: NextRequest) {
       nextPollDelayMs = Math.min(Math.round(nextPollDelayMs * 1.6), MAX_SESSION_POLL_INTERVAL_MS);
     }
 
+    console.error(
+      `[runway-session] Timed out for ${created.id}. Last status: ${liveSession.status}, last poll error: ${lastPollError}`
+    );
+
     return NextResponse.json(
       {
         error: "Runway live session timed out while waiting for connection credentials",
-        session: liveSession,
+        lastStatus: liveSession.status,
+        lastPollError,
+        sessionId: created.id,
       },
       { status: 504 }
     );
