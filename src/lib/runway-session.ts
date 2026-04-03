@@ -3,7 +3,7 @@
 import { consumeSession } from "@runwayml/avatars-react/api";
 import type { SessionCredentials } from "@runwayml/avatars-react";
 
-const POLL_TIMEOUT_MS = 60_000;
+const POLL_TIMEOUT_MS = 120_000; // 2 minutes — Runway can be slow
 const INITIAL_POLL_INTERVAL_MS = 500;
 const MAX_POLL_INTERVAL_MS = 2_000;
 
@@ -14,19 +14,24 @@ export type CreateSessionResult = {
 };
 
 /**
- * Create a Runway realtime session and wait for it to be ready.
+ * Create a Runway realtime session and obtain WebRTC credentials.
  *
- * 1. POST /api/runway/realtime-session → creates session, returns { sessionId }
- * 2. Polls GET /api/runway/realtime-session?sessionId=… until READY
- * 3. Calls the SDK's consumeSession() to get WebRTC credentials
+ * The server POST may return one of three shapes:
  *
- * All polling happens client-side to avoid Vercel function timeouts.
+ * 1. **Full credentials** (serverUrl, token, roomName) — session was
+ *    consumed server-side, ready immediately.
+ * 2. **sessionId + sessionKey** — session is READY but wasn't consumed
+ *    yet; call the SDK's `consumeSession()` client-side.
+ * 3. **sessionId only** — session is still provisioning; poll GET until
+ *    READY, then consume client-side.
+ *
+ * All client-side polling happens here to avoid Vercel function timeouts.
  */
 export async function createAndConsumeSession(
   body: Record<string, unknown>,
   signal?: AbortSignal
 ): Promise<CreateSessionResult> {
-  // Step 1 — Create
+  // Step 1 — Create (server may also poll and return credentials)
   const createRes = await fetch("/api/runway/realtime-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -39,16 +44,49 @@ export async function createAndConsumeSession(
     throw new Error(createData.error || "Failed to create Runway session");
   }
 
-  const { sessionId, clientEventsEnabled } = createData as {
+  const {
+    sessionId,
+    clientEventsEnabled,
+    serverUrl,
+    token,
+    roomName,
+    sessionKey: immediateKey,
+  } = createData as {
     sessionId: string;
     clientEventsEnabled: boolean;
+    serverUrl?: string;
+    token?: string;
+    roomName?: string;
+    sessionKey?: string;
   };
 
   if (!sessionId) {
     throw new Error("No sessionId returned from server");
   }
 
-  // Step 2 — Poll for READY
+  // Case 1 — Server returned full WebRTC credentials
+  if (serverUrl && token && roomName) {
+    return {
+      sessionId,
+      credentials: { sessionId, serverUrl, token, roomName },
+      clientEventsEnabled: !!clientEventsEnabled,
+    };
+  }
+
+  // Case 2 — Server returned sessionKey; consume client-side
+  if (immediateKey) {
+    const { url, token: t, roomName: rn } = await consumeSession({
+      sessionId,
+      sessionKey: immediateKey,
+    });
+    return {
+      sessionId,
+      credentials: { sessionId, serverUrl: url, token: t, roomName: rn },
+      clientEventsEnabled: !!clientEventsEnabled,
+    };
+  }
+
+  // Case 3 — Need to poll for READY
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   let pollInterval = INITIAL_POLL_INTERVAL_MS;
   let sessionKey: string | null = null;
@@ -68,7 +106,6 @@ export async function createAndConsumeSession(
     const pollData = await pollRes.json();
 
     if (!pollRes.ok) {
-      // Server error polling — continue trying
       console.warn("[runway-session] Poll error:", pollData.error);
       continue;
     }
@@ -107,8 +144,8 @@ export async function createAndConsumeSession(
     );
   }
 
-  // Step 3 — Consume (client-side, via SDK)
-  const { url, token, roomName } = await consumeSession({
+  // Consume client-side via SDK
+  const { url, token: t, roomName: rn } = await consumeSession({
     sessionId,
     sessionKey,
   });
@@ -118,8 +155,8 @@ export async function createAndConsumeSession(
     credentials: {
       sessionId,
       serverUrl: url,
-      token,
-      roomName,
+      token: t,
+      roomName: rn,
     },
     clientEventsEnabled: !!clientEventsEnabled,
   };

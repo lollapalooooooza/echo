@@ -6,13 +6,24 @@ import { db } from "@/lib/db";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import {
   cancelRealtimeSession,
+  consumeRealtimeSession,
   createRealtimeSession,
   getRealtimeSession,
 } from "@/services/runwayRealtime";
 
 const DEFAULT_MAX_DURATION = 300;
 
+/**
+ * Quick server-side poll window (ms). Keep well under Vercel's 10 s
+ * Hobby default so we never get killed mid-response. On Pro plans
+ * maxDuration = 60 gives us more room, but we stay conservative here
+ * so the function always responds.
+ */
+const SERVER_POLL_BUDGET_MS = 8_000;
+const SERVER_POLL_INTERVAL_MS = 500;
+
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // Pro plan: up to 60 s; Hobby: capped at 10 s
 
 function clampMaxDuration(value: unknown) {
   const numeric = typeof value === "number" ? value : Number(value);
@@ -28,6 +39,10 @@ async function getAccessibleCharacter(characterId: string, userId?: string) {
   if (!isOwner && character.status !== "PUBLISHED") return null;
 
   return character;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function readOptionalString(value: unknown) {
@@ -48,10 +63,14 @@ function isToolCallingUnavailableError(error: unknown) {
 /**
  * POST — Create a new Runway realtime session.
  *
- * Returns { sessionId } immediately. The CLIENT is responsible for polling
- * GET to wait for READY, then consuming the session via the SDK.
+ * Hybrid approach following the official SDK pattern:
+ * 1. Creates the session on Runway
+ * 2. Polls for READY for up to ~8 s server-side
+ * 3. If READY in time → consumes and returns full WebRTC credentials
+ * 4. If not → returns { sessionId } so the client can continue polling
  *
- * This avoids long-running server functions that hit Vercel timeouts.
+ * maxDuration = 60 extends the budget on Pro plan. On Hobby (10 s cap)
+ * the poll budget is 8 s which is still safe.
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -127,7 +146,65 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Return immediately — client will poll GET for status
+    // Quick server-side poll — try to reach READY before we respond.
+    // If the session is ready in time we return full credentials so the
+    // client can skip its own polling. If not, we return just the
+    // sessionId and let the client continue polling GET.
+    const pollDeadline = Date.now() + SERVER_POLL_BUDGET_MS;
+
+    while (Date.now() < pollDeadline) {
+      await wait(SERVER_POLL_INTERVAL_MS);
+
+      try {
+        const session = await getRealtimeSession(created.id);
+
+        if (session.status === "READY") {
+          // Consume server-side and return WebRTC credentials directly
+          try {
+            const credentials = await consumeRealtimeSession(
+              session.id,
+              session.sessionKey
+            );
+            return NextResponse.json({
+              sessionId: session.id,
+              serverUrl: credentials.url,
+              token: credentials.token,
+              roomName: credentials.roomName,
+              clientEventsEnabled,
+            });
+          } catch (consumeErr: any) {
+            // Consume failed — let the client try via SDK
+            console.warn("[runway-session] Server consume failed:", consumeErr.message);
+            return NextResponse.json({
+              sessionId: session.id,
+              sessionKey: session.sessionKey,
+              clientEventsEnabled,
+            });
+          }
+        }
+
+        if (session.status === "FAILED") {
+          return NextResponse.json(
+            { error: session.failure || "Runway session failed to start" },
+            { status: 409 }
+          );
+        }
+
+        if (session.status === "CANCELLED" || session.status === "COMPLETED") {
+          return NextResponse.json(
+            { error: `Runway session ${session.status.toLowerCase()} before connection` },
+            { status: 409 }
+          );
+        }
+
+        // NOT_READY — keep polling
+      } catch {
+        // Transient poll error — keep trying
+      }
+    }
+
+    // Timed out server-side — return sessionId for client-side polling
+    console.log(`[runway-session] ${created.id} still NOT_READY after ${SERVER_POLL_BUDGET_MS}ms, handing to client`);
     return NextResponse.json({
       sessionId: created.id,
       clientEventsEnabled,
