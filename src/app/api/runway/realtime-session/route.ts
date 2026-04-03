@@ -6,21 +6,13 @@ import { db } from "@/lib/db";
 import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import {
   cancelRealtimeSession,
-  consumeRealtimeSession,
   createRealtimeSession,
   getRealtimeSession,
-  type RunwayRealtimeSession,
 } from "@/services/runwayRealtime";
-// buildRunwaySessionPersonality removed — we now let the avatar's own
-// config on Runway (voice, personality, etc.) take effect by default.
 
 const DEFAULT_MAX_DURATION = 300;
-const SESSION_READY_TIMEOUT_MS = 30_000;
-const INITIAL_SESSION_POLL_INTERVAL_MS = 100;
-const MAX_SESSION_POLL_INTERVAL_MS = 350;
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
 function clampMaxDuration(value: unknown) {
   const numeric = typeof value === "number" ? value : Number(value);
@@ -38,10 +30,6 @@ async function getAccessibleCharacter(characterId: string, userId?: string) {
   return character;
 }
 
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function readOptionalString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -57,6 +45,14 @@ function isToolCallingUnavailableError(error: unknown) {
   return /tool calling is coming soon for all organizations/i.test(message);
 }
 
+/**
+ * POST — Create a new Runway realtime session.
+ *
+ * Returns { sessionId } immediately. The CLIENT is responsible for polling
+ * GET to wait for READY, then consuming the session via the SDK.
+ *
+ * This avoids long-running server functions that hit Vercel timeouts.
+ */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id as string | undefined;
@@ -93,8 +89,6 @@ export async function POST(req: NextRequest) {
     const requestedStartScript = hasStartScriptOverride ? readOptionalString(body?.startScript) : "";
     let clientEventsEnabled = requestedClientEvents;
 
-    // Build session options — only include overrides that are explicitly provided.
-    // Otherwise let the avatar's own config on Runway (voice, personality, etc.) take effect.
     const sessionOptions: {
       enableClientEvents: boolean;
       personality?: string;
@@ -103,12 +97,10 @@ export async function POST(req: NextRequest) {
       enableClientEvents: clientEventsEnabled,
     };
 
-    // Only override personality if the caller explicitly sent one
     if (requestedPersonality) {
       sessionOptions.personality = requestedPersonality;
     }
 
-    // Only override startScript if the caller explicitly sent one
     if (hasStartScriptOverride && requestedStartScript) {
       sessionOptions.startScript = requestedStartScript;
     }
@@ -134,124 +126,24 @@ export async function POST(req: NextRequest) {
         sessionOptions
       );
     }
-    console.log(`[runway-session] Created session ${created.id}, polling for READY…`);
 
-    const deadline = Date.now() + SESSION_READY_TIMEOUT_MS;
-    let liveSession: RunwayRealtimeSession | { id: string; status: "NOT_READY" } = {
-      id: created.id,
-      status: "NOT_READY",
-    };
-    let lastPollError: string | null = null;
-    let consecutivePollErrors = 0;
-
-    let nextPollDelayMs = INITIAL_SESSION_POLL_INTERVAL_MS;
-
-    while (Date.now() < deadline) {
-      try {
-        liveSession = await getRealtimeSession(created.id);
-        consecutivePollErrors = 0;
-        lastPollError = null;
-      } catch (pollErr: any) {
-        consecutivePollErrors++;
-        lastPollError = pollErr?.message || String(pollErr);
-        console.error(
-          `[runway-session] Poll error #${consecutivePollErrors} for ${created.id}:`,
-          lastPollError
-        );
-        // Bail early if the retrieve call is consistently failing
-        if (consecutivePollErrors >= 5) {
-          return NextResponse.json(
-            {
-              error: `Runway session polling failed repeatedly: ${lastPollError}`,
-              sessionId: created.id,
-            },
-            { status: 502 }
-          );
-        }
-        liveSession = { id: created.id, status: "NOT_READY" };
-      }
-
-      console.log(`[runway-session] ${created.id} status: ${liveSession.status}`);
-
-      if (liveSession.status === "READY") {
-        try {
-          const credentials = await consumeRealtimeSession(liveSession.id, liveSession.sessionKey);
-          return NextResponse.json({
-            sessionId: liveSession.id,
-            serverUrl: credentials.url,
-            token: credentials.token,
-            roomName: credentials.roomName,
-            clientEventsEnabled,
-          });
-        } catch (consumeErr: any) {
-          console.error(`[runway-session] Consume failed for ${created.id}:`, consumeErr?.message);
-          return NextResponse.json(
-            {
-              error: `Session was ready but consume failed: ${consumeErr?.message || "unknown error"}`,
-              sessionId: created.id,
-            },
-            { status: 502 }
-          );
-        }
-      }
-
-      if (liveSession.status === "FAILED") {
-        return NextResponse.json(
-          {
-            error: liveSession.failure || "Runway live session failed to start",
-            session: liveSession,
-          },
-          { status: 409 }
-        );
-      }
-
-      if (liveSession.status === "CANCELLED" || liveSession.status === "COMPLETED") {
-        return NextResponse.json(
-          {
-            error: `Runway live session ${liveSession.status.toLowerCase()} before it could connect`,
-            session: liveSession,
-          },
-          { status: 409 }
-        );
-      }
-
-      // RUNNING means someone already consumed the session (shouldn't happen
-      // in normal flow but handle it gracefully)
-      if (liveSession.status === "RUNNING") {
-        return NextResponse.json(
-          {
-            error: "Runway live session was already consumed by another client",
-            session: liveSession,
-          },
-          { status: 409 }
-        );
-      }
-
-      const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) break;
-
-      await wait(Math.min(nextPollDelayMs, remainingMs));
-      nextPollDelayMs = Math.min(Math.round(nextPollDelayMs * 1.6), MAX_SESSION_POLL_INTERVAL_MS);
-    }
-
-    console.error(
-      `[runway-session] Timed out for ${created.id}. Last status: ${liveSession.status}, last poll error: ${lastPollError}`
-    );
-
-    return NextResponse.json(
-      {
-        error: "Runway live session timed out while waiting for connection credentials",
-        lastStatus: liveSession.status,
-        lastPollError,
-        sessionId: created.id,
-      },
-      { status: 504 }
-    );
+    // Return immediately — client will poll GET for status
+    return NextResponse.json({
+      sessionId: created.id,
+      clientEventsEnabled,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to create Runway realtime session" }, { status: 500 });
   }
 }
 
+/**
+ * GET — Check the status of a Runway realtime session.
+ *
+ * When the session reaches READY, the response includes `sessionKey`
+ * which the client uses with the SDK's `consumeSession()` to get
+ * the WebRTC credentials (serverUrl, token, roomName).
+ */
 export async function GET(req: NextRequest) {
   const sessionId = req.nextUrl.searchParams.get("sessionId");
   if (!sessionId) {

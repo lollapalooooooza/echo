@@ -79,20 +79,6 @@ function PodcastStagePlaceholder({
   );
 }
 
-async function readResponse(response: Response) {
-  const contentType = response.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) return response.json();
-  const text = await response.text();
-  return {
-    error:
-      text
-        .replace(/<[^>]*>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 220) || `Request failed with status ${response.status}`,
-  };
-}
-
 type ConnectionState =
   | { status: "connecting" }
   | { status: "ready"; credentials: SessionCredentials }
@@ -469,25 +455,15 @@ export function PodcastRunwayStage({
     ) => {
       setConn({ status: "connecting" });
       try {
-        const res = await fetch("/api/runway/realtime-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            characterId: character.id,
-            maxDuration: 900,
-          }),
-        });
-        const data = await readResponse(res);
-        if (!res.ok) throw new Error(data.error || "Failed to start session");
+        const { createAndConsumeSession } = await import("@/lib/runway-session");
+        const result = await createAndConsumeSession(
+          { characterId: character.id, maxDuration: 900 },
+          signal
+        );
         if (signal.aborted) return;
         setConn({
           status: "ready",
-          credentials: {
-            sessionId: data.sessionId,
-            serverUrl: data.serverUrl,
-            token: data.token,
-            roomName: data.roomName,
-          },
+          credentials: result.credentials,
         });
       } catch (err: any) {
         if (!signal.aborted) {

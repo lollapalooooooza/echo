@@ -479,41 +479,27 @@ export function RunwayLiveRoom({
   }, [roomTheme]);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function connect() {
       setConnection({ status: "connecting" });
 
       try {
-        const response = await fetch("/api/runway/realtime-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            characterId: character.id,
-            enableClientEvents: true,
-          }),
-        });
-        const data = await readResponse(response);
-        if (!response.ok) throw new Error(data.error || "Failed to start Runway live session");
+        const { createAndConsumeSession } = await import("@/lib/runway-session");
+        const result = await createAndConsumeSession(
+          { characterId: character.id, enableClientEvents: true },
+          controller.signal
+        );
 
-        if (!data.sessionId || !data.serverUrl || !data.token || !data.roomName) {
-          throw new Error("Runway did not return valid live session credentials");
-        }
-
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
 
         setConnection({
           status: "ready",
-          credentials: {
-            sessionId: data.sessionId,
-            serverUrl: data.serverUrl,
-            token: data.token,
-            roomName: data.roomName,
-          },
-          clientEventsEnabled: !!data.clientEventsEnabled,
+          credentials: result.credentials,
+          clientEventsEnabled: result.clientEventsEnabled,
         });
       } catch (error: any) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setConnection({
             status: "error",
             error: error.message || "Failed to start Runway live session",
@@ -525,7 +511,7 @@ export function RunwayLiveRoom({
     void connect();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [attempt, character.id]);
 
