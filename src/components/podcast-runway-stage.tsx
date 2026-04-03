@@ -193,6 +193,13 @@ const PodcastSessionRuntime = forwardRef<
   const audioContextRef = useRef<AudioContext | null>(null);
   const destinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const publishedTrackRef = useRef<MediaStreamTrack | null>(null);
+  const bridgeInitPromiseRef = useRef<
+    Promise<{
+      audioContext: AudioContext;
+      destination: MediaStreamAudioDestinationNode;
+    }> | null
+  >(null);
+  const bridgeReadyRef = useRef(false);
   const readyRef = useRef(false);
   const queueRef = useRef(Promise.resolve());
   const seenEntryIdsRef = useRef(new Set<string>());
@@ -219,6 +226,8 @@ const PodcastSessionRuntime = forwardRef<
   }, [room]);
 
   const cleanupBridge = useCallback(async () => {
+    bridgeInitPromiseRef.current = null;
+    bridgeReadyRef.current = false;
     const publishedTrack = publishedTrackRef.current;
     publishedTrackRef.current = null;
 
@@ -242,45 +251,76 @@ const PodcastSessionRuntime = forwardRef<
       throw new Error("Runway live session is not active yet");
     }
 
-    const AudioContextCtor =
-      typeof window !== "undefined"
-        ? window.AudioContext || (window as any).webkitAudioContext
-        : null;
-    if (!AudioContextCtor) {
-      throw new Error("This browser does not support Web Audio");
+    if (!avatar.participant) {
+      throw new Error(`${character.name} is still joining the live room`);
     }
 
-    if (!audioContextRef.current) {
-      const context = new AudioContextCtor();
-      audioContextRef.current = context;
-      destinationRef.current = context.createMediaStreamDestination();
+    if (bridgeInitPromiseRef.current) {
+      return bridgeInitPromiseRef.current;
     }
 
-    if (audioContextRef.current.state === "suspended") {
-      await audioContextRef.current.resume();
-    }
-
-    if (!publishedTrackRef.current) {
-      const mediaTrack = destinationRef.current?.stream.getAudioTracks()[0];
-      if (!mediaTrack) {
-        throw new Error("Unable to create podcast input audio track");
+    const initPromise = (async () => {
+      const AudioContextCtor =
+        typeof window !== "undefined"
+          ? window.AudioContext || (window as any).webkitAudioContext
+          : null;
+      if (!AudioContextCtor) {
+        throw new Error("This browser does not support Web Audio");
       }
 
-      await room.localParticipant.publishTrack(mediaTrack, {
-        source: Track.Source.Microphone,
-      });
-      publishedTrackRef.current = mediaTrack;
-      setReadyState(true);
-    }
+      if (!audioContextRef.current) {
+        const context = new AudioContextCtor();
+        audioContextRef.current = context;
+        destinationRef.current = context.createMediaStreamDestination();
+      }
 
-    return {
-      audioContext: audioContextRef.current,
-      destination: destinationRef.current,
-    };
-  }, [room, session.state, setReadyState]);
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+
+      if (!publishedTrackRef.current) {
+        const mediaTrack = destinationRef.current?.stream.getAudioTracks()[0];
+        if (!mediaTrack) {
+          throw new Error("Unable to create podcast input audio track");
+        }
+
+        const microphonePublication = room.localParticipant.getTrackPublication(
+          Track.Source.Microphone
+        );
+        const publishedMediaTrackId =
+          microphonePublication?.track?.mediaStreamTrack?.id;
+
+        if (publishedMediaTrackId !== mediaTrack.id) {
+          await room.localParticipant.publishTrack(mediaTrack, {
+            source: Track.Source.Microphone,
+          });
+        }
+
+        publishedTrackRef.current = mediaTrack;
+      }
+
+      bridgeReadyRef.current = true;
+      setReadyState(true);
+
+      return {
+        audioContext: audioContextRef.current!,
+        destination: destinationRef.current!,
+      };
+    })();
+
+    bridgeInitPromiseRef.current = initPromise;
+
+    try {
+      return await initPromise;
+    } finally {
+      if (bridgeInitPromiseRef.current === initPromise) {
+        bridgeInitPromiseRef.current = null;
+      }
+    }
+  }, [avatar.participant, character.name, room, session.state, setReadyState]);
 
   useEffect(() => {
-    if (session.state === "active") {
+    if (session.state === "active" && avatar.participant) {
       void ensureAudioBridge().catch((error) => {
         console.error("[PodcastRunwayStage] Failed to initialize live audio bridge:", error);
         setReadyState(false);
@@ -288,8 +328,9 @@ const PodcastSessionRuntime = forwardRef<
       return;
     }
 
+    bridgeReadyRef.current = false;
     setReadyState(false);
-  }, [ensureAudioBridge, session.state, setReadyState]);
+  }, [avatar.participant, ensureAudioBridge, session.state, setReadyState]);
 
   useEffect(() => {
     return () => {
