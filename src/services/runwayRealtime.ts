@@ -28,6 +28,13 @@ export type CreateRealtimeSessionOptions = {
   startScript?: string;
 };
 
+function normalizeSessionOverride(value: string | undefined, maxChars: number) {
+  if (!value) return undefined;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  return normalized.slice(0, maxChars);
+}
+
 export async function createRealtimeSession(
   avatarId: string,
   maxDuration = 300,
@@ -42,14 +49,16 @@ export async function createRealtimeSession(
     },
     maxDuration,
   };
+  const personality = normalizeSessionOverride(options?.personality, 1800);
+  const startScript = normalizeSessionOverride(options?.startScript, 1800);
 
   // Only send overrides if explicitly provided — otherwise let
   // the avatar's own config on Runway (voice, personality, etc.) take effect.
-  if (options?.personality) {
-    params.personality = options.personality;
+  if (personality) {
+    params.personality = personality;
   }
-  if (options?.startScript) {
-    params.startScript = options.startScript;
+  if (startScript) {
+    params.startScript = startScript;
   }
   if (options?.enableClientEvents) {
     params.tools = runwayClientEventTools;

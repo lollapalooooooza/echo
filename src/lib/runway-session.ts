@@ -13,6 +13,32 @@ export type CreateSessionResult = {
   clientEventsEnabled: boolean;
 };
 
+async function readResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      return await response.json();
+    } catch {
+      return {
+        error: response.ok
+          ? "Runway returned an empty JSON response"
+          : `Request failed with status ${response.status}`,
+      };
+    }
+  }
+
+  const text = await response.text();
+  return {
+    error:
+      text
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 220) || `Request failed with status ${response.status}`,
+  };
+}
+
 /**
  * Create a Runway realtime session and obtain WebRTC credentials.
  *
@@ -39,9 +65,9 @@ export async function createAndConsumeSession(
     signal,
   });
 
-  const createData = await createRes.json();
+  const createData = await readResponse(createRes);
   if (!createRes.ok) {
-    throw new Error(createData.error || "Failed to create Runway session");
+    throw new Error((createData as any).error || "Failed to create Runway session");
   }
 
   const {
@@ -103,23 +129,23 @@ export async function createAndConsumeSession(
       `/api/runway/realtime-session?sessionId=${encodeURIComponent(sessionId)}`,
       { signal }
     );
-    const pollData = await pollRes.json();
+    const pollData = await readResponse(pollRes);
 
     if (!pollRes.ok) {
-      console.warn("[runway-session] Poll error:", pollData.error);
+      console.warn("[runway-session] Poll error:", (pollData as any).error);
       continue;
     }
 
-    const status = pollData.session?.status;
+    const status = (pollData as any).session?.status;
 
     if (status === "READY") {
-      sessionKey = pollData.session.sessionKey;
+      sessionKey = (pollData as any).session.sessionKey;
       break;
     }
 
     if (status === "FAILED") {
       throw new Error(
-        pollData.session.failure || "Runway session failed to start"
+        (pollData as any).session.failure || "Runway session failed to start"
       );
     }
 

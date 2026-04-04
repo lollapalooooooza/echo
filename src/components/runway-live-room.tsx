@@ -539,8 +539,10 @@ export function RunwayLiveRoom({
           <Link
             href="/lobby"
             className={cn(
-              "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm text-white shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
-              isLight ? "border-white/28 bg-white/14 hover:bg-white/18" : "border-white/12 bg-white/10 hover:bg-white/14"
+              "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
+              isLight
+                ? "border-white/28 bg-white/14 text-slate-900 hover:bg-white/18"
+                : "border-white/12 bg-white/10 text-white hover:bg-white/14"
             )}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -551,10 +553,10 @@ export function RunwayLiveRoom({
               <button
                 onClick={onUseFallback}
                 className={cn(
-                  "inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[12px] font-medium text-white shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
+                  "inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[12px] font-medium shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
                   isLight
-                    ? "border-white/28 bg-black/28 hover:bg-black/36"
-                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                    ? "border-white/28 bg-white/14 text-slate-900 hover:bg-white/18"
+                    : "border-white/10 bg-white/5 text-white hover:bg-white/10"
                 )}
               >
                 <MessageCircleMore className="h-3.5 w-3.5" />
@@ -565,8 +567,10 @@ export function RunwayLiveRoom({
             <button
               onClick={() => setRoomTheme((current) => (current === "light" ? "dark" : "light"))}
               className={cn(
-                "inline-flex h-10 w-10 items-center justify-center rounded-full border text-white shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
-                isLight ? "border-white/28 bg-white/14 hover:bg-white/18" : "border-white/10 bg-white/10 hover:bg-white/14"
+                "inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
+                isLight
+                  ? "border-white/28 bg-white/14 text-slate-900 hover:bg-white/18"
+                  : "border-white/10 bg-white/10 text-white hover:bg-white/14"
               )}
               aria-label="Toggle room theme"
             >

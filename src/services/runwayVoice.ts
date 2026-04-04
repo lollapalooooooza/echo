@@ -123,6 +123,8 @@ const RUNWAY_BIO_ADJECTIVE_HINTS: Array<[RegExp, string[]]> = [
   [/\b(insightful|strategic|thoughtful|wise|reflective)\b/gi, ["insightful", "strategic", "reflective"]],
   [/\b(concise|clear|direct|straightforward)\b/gi, ["clear", "concise", "direct"]],
 ];
+const MAX_RUNWAY_AVATAR_PERSONALITY_CHARS = 1900;
+const MAX_RUNWAY_SESSION_PERSONALITY_CHARS = 1800;
 
 function inferGenderHint(voiceName: string) {
   if (!voiceName) return null;
@@ -172,6 +174,25 @@ function sanitizeRunwayBio(bio: string, characterName?: string) {
     .filter((sentence) => !containsLikelyHumanName(sentence));
 
   return cleanSentence(sentences.slice(0, 3).join(". "));
+}
+
+function finalizeRunwayPrompt(text: string, maxChars: number) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxChars) return normalized;
+
+  const truncated = normalized.slice(0, maxChars).trimEnd();
+  const sentenceBoundary = Math.max(
+    truncated.lastIndexOf(". "),
+    truncated.lastIndexOf("! "),
+    truncated.lastIndexOf("? ")
+  );
+  const candidate =
+    sentenceBoundary > Math.floor(maxChars * 0.6)
+      ? truncated.slice(0, sentenceBoundary + 1).trim()
+      : truncated;
+
+  return /[.!?]$/.test(candidate) ? candidate : `${candidate}.`;
 }
 
 export function isRunwayLiveVoicePreset(value?: string | null): value is RunwayLiveVoicePreset {
@@ -273,7 +294,7 @@ export function buildRunwayPersonality(input: {
     "If you do not know something, say so directly instead of inventing details.",
   ];
 
-  return lines.join(" ");
+  return finalizeRunwayPrompt(lines.join(" "), MAX_RUNWAY_AVATAR_PERSONALITY_CHARS);
 }
 
 export function buildRunwaySessionPersonality(input: {
@@ -298,5 +319,5 @@ export function buildRunwaySessionPersonality(input: {
     .filter(Boolean)
     .join(" ");
 
-  return instructions;
+  return finalizeRunwayPrompt(instructions, MAX_RUNWAY_SESSION_PERSONALITY_CHARS);
 }
