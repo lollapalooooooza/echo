@@ -449,6 +449,7 @@ export default function PodcastPage() {
   const theme: PodcastTheme = "light";
   const isLight = true;
   const canUseRunwayLive = !!charA?.runwayCharacterId && !!charB?.runwayCharacterId;
+  const sessionTitle = topic.trim() || "Podcast Studio";
 
   if (loading) {
     return (
@@ -492,9 +493,17 @@ export default function PodcastPage() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-6">
           <div className="flex min-w-0 items-center gap-4">
             <BrandMark href="/" size="sm" />
-            <p className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-[#996026] md:block">
-              Podcast Studio
-            </p>
+            <div className="min-w-0">
+              <p className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-[#996026] md:block">
+                Podcast Studio
+              </p>
+              <p
+                className="max-w-[34rem] truncate text-sm font-medium leading-tight text-slate-700 md:text-[15px]"
+                title={sessionTitle}
+              >
+                {sessionTitle}
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
