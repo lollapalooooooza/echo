@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Check,
   Loader2,
   MessageCircleMore,
   Mic,
@@ -194,6 +194,7 @@ function TranscriptBubble({
 }
 
 export default function PodcastPage() {
+  const router = useRouter();
   const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const charIdA = searchParams?.get("a") || "";
   const charIdB = searchParams?.get("b") || "";
@@ -212,7 +213,6 @@ export default function PodcastPage() {
   const [showPublish, setShowPublish] = useState(false);
   const [publishDescription, setPublishDescription] = useState("");
   const [publishing, setPublishing] = useState(false);
-  const [published, setPublished] = useState(false);
 
   const transcriptRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -420,16 +420,24 @@ export default function PodcastPage() {
           description: publishDescription.trim() || undefined,
         }),
       });
-      if (res.ok) {
-        setPublished(true);
-        setShowPublish(false);
-      } else {
+      if (!res.ok) {
         const data = await res.json().catch(() => null);
         alert(data?.error || "Failed to publish podcast");
+        setPublishing(false);
+        return;
       }
+
+      // Stop the current session
+      setPaused(true);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+
+      // Redirect to podcast lobby
+      router.push("/lobby?tab=podcasts");
     } catch {
       alert("Failed to publish podcast");
-    } finally {
       setPublishing(false);
     }
   };
@@ -536,23 +544,16 @@ export default function PodcastPage() {
 
             {/* Publish button */}
             <div className="relative">
-              {published ? (
-                <span className="inline-flex h-10 items-center gap-2 rounded-full bg-emerald-50 px-4 text-[12px] font-medium text-emerald-700">
-                  <Check className="h-3.5 w-3.5" />
-                  Published
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowPublish((v) => !v)}
-                  disabled={!topic.trim()}
-                  className="inline-flex h-10 items-center gap-2 rounded-full bg-orange-500 px-4 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  Publish
-                </button>
-              )}
-              {showPublish && !published && (
+              <button
+                type="button"
+                onClick={() => setShowPublish((v) => !v)}
+                disabled={!topic.trim() || publishing}
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-orange-500 px-4 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {publishing ? "Publishing…" : "Publish"}
+              </button>
+              {showPublish && (
                 <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-[20px] border border-neutral-200 bg-white p-5 shadow-xl">
                   <h4 className="text-sm font-semibold text-slate-900">Publish this podcast</h4>
                   <p className="mt-1 text-[12px] text-slate-500">
@@ -605,11 +606,24 @@ export default function PodcastPage() {
       </header>
 
       {mode === "runway" && canUseRunwayLive ? (
-        <PodcastRunwayStage
-          charA={charA}
-          charB={charB}
-          topic={topic}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {topic.trim() && (
+            <div className="mx-auto mt-6 w-full max-w-3xl px-6 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600/60">Topic</p>
+              <h2
+                className="mt-1 text-xl font-semibold tracking-tight text-slate-800 sm:text-2xl"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {topic}
+              </h2>
+            </div>
+          )}
+          <PodcastRunwayStage
+            charA={charA}
+            charB={charB}
+            topic={topic}
+          />
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           {!canUseRunwayLive && (
@@ -619,6 +633,19 @@ export default function PodcastPage() {
               </div>
             </div>
           )}
+
+        {/* Topic title above characters */}
+        {topic.trim() && (
+          <div className="mx-auto mt-6 w-full max-w-3xl px-6 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600/60">Topic</p>
+            <h2
+              className="mt-1 text-xl font-semibold tracking-tight text-slate-800 sm:text-2xl"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              {topic}
+            </h2>
+          </div>
+        )}
 
         {/* Characters stage */}
         <div

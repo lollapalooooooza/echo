@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, MessageCircle, Loader2, Mic, Radio, Search, Sparkles, Users, X, Headphones } from "lucide-react";
 import { formatNumber, cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
@@ -42,7 +42,9 @@ type LobbyTab = "characters" | "podcasts";
 
 export default function LobbyPage() {
   const router = useRouter();
-  const [lobbyTab, setLobbyTab] = useState<LobbyTab>("characters");
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") === "podcasts" ? "podcasts" : "characters";
+  const [lobbyTab, setLobbyTab] = useState<LobbyTab>(initialTab);
   const [characters, setCharacters] = useState<any[]>([]);
   const [podcasts, setPodcasts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
