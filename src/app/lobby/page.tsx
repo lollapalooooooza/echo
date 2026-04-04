@@ -250,7 +250,7 @@ export default function LobbyPage() {
 
               const cardContent = (
                 <>
-                  <div className="relative aspect-[5/4] overflow-hidden bg-neutral-100">
+                  <div className="relative aspect-[4/3] overflow-hidden bg-neutral-100">
                     <LobbyCharacterArt character={c} />
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
                     {podcastMode && (
