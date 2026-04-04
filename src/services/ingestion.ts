@@ -6,10 +6,14 @@ import { db } from "@/lib/db";
 import { discoverPages, scrapeUrl } from "@/services/scraping";
 import { summarizeKnowledgeSource } from "@/services/content-intelligence";
 import { storeEmbeddings } from "./embeddings";
+import { randomUUID } from "crypto";
 
 const MAX_CONCURRENT_CHUNK_STORES = 1;
 const WEBSITE_CRAWL_CONCURRENCY = 2;
 export const MAX_KNOWLEDGE_SOURCE_CHARS = 200_000;
+const CHUNK_INSERT_BATCH_SIZE = 50;
+const CHUNK_INSERT_RETRY_LIMIT = 4;
+const CHUNK_INSERT_RETRY_DELAY_MS = 300;
 
 let activeChunkStores = 0;
 const chunkStoreWaiters: Array<() => void> = [];
@@ -41,6 +45,42 @@ function ensureKnowledgeWithinCharLimit(text: string, label: string) {
   throw new Error(
     `${label} is too large to ingest. Knowledge uploads are limited to ${MAX_KNOWLEDGE_SOURCE_CHARS.toLocaleString()} characters after text extraction.`
   );
+}
+
+function isRetryableChunkWriteError(error: unknown) {
+  const message =
+    typeof error === "string"
+      ? error
+      : error && typeof error === "object" && "message" in error
+        ? String((error as any).message || "")
+        : "";
+
+  return (
+    /Transaction API error: Transaction not found/i.test(message) ||
+    /Timed out fetching a new connection from the connection pool/i.test(message) ||
+    /Timed out fetching/i.test(message) ||
+    /Can't reach database server/i.test(message)
+  );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withChunkWriteRetry<T>(task: () => Promise<T>) {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await task();
+    } catch (error) {
+      attempt += 1;
+      if (!isRetryableChunkWriteError(error) || attempt >= CHUNK_INSERT_RETRY_LIMIT) {
+        throw error;
+      }
+      await wait(CHUNK_INSERT_RETRY_DELAY_MS * attempt);
+    }
+  }
 }
 
 // ── Text Chunking ────────────────────────────────────────────
@@ -118,19 +158,25 @@ async function processAndStoreChunks(
 ): Promise<number> {
   return withChunkStoreSlot(async () => {
     const textChunks = chunkText(text);
-    const records = await db.contentChunk.createManyAndReturn({
-      data: textChunks.map((tc) => ({
-        sourceId,
-        chunkIndex: tc.index,
-        content: tc.content,
-        heading: tc.heading,
-        tokenCount: Math.ceil(tc.content.length / 4),
-      })),
-      select: {
-        id: true,
-        content: true,
-      },
-    });
+    const records = textChunks.map((tc) => ({
+      id: `chunk_${randomUUID()}`,
+      sourceId,
+      chunkIndex: tc.index,
+      content: tc.content,
+      heading: tc.heading,
+      tokenCount: Math.ceil(tc.content.length / 4),
+    }));
+
+    for (let index = 0; index < records.length; index += CHUNK_INSERT_BATCH_SIZE) {
+      const batch = records.slice(index, index + CHUNK_INSERT_BATCH_SIZE);
+      await withChunkWriteRetry(() =>
+        db.contentChunk.createMany({
+          data: batch,
+          skipDuplicates: true,
+        })
+      );
+    }
+
     await storeEmbeddings(records.map((c) => ({ id: c.id, content: c.content })));
     return records.length;
   });
