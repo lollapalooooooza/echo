@@ -9,8 +9,39 @@ import { ensureUserProfile } from "@/services/user";
 
 const DEV_USER_ID = "dev-user-000";
 
+// On Vercel, VERCEL_URL is the deployment-specific URL (changes per deploy),
+// but VERCEL_PROJECT_PRODUCTION_URL is the stable canonical domain.
+// If NEXTAUTH_URL is not explicitly set, NextAuth auto-detects from VERCEL_URL,
+// which can differ from the canonical domain — causing the OAuth state-cookie to
+// be set on one origin while the callback arrives on another, triggering
+// OAUTH_CALLBACK_HANDLER_ERROR.  We pin it to the stable URL before NextAuth
+// reads it during module initialisation.
+if (!process.env.NEXTAUTH_URL) {
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    process.env.NEXTAUTH_URL = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  } else if (process.env.VERCEL_URL) {
+    process.env.NEXTAUTH_URL = `https://${process.env.VERCEL_URL}`;
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db) as any,
+  logger: {
+    error(code, metadata) {
+      // Log the full error (Vercel truncates console output, so we stringify
+      // the metadata so the inner error message is visible in runtime logs)
+      const detail =
+        metadata instanceof Error
+          ? metadata.message
+          : typeof metadata === "object"
+          ? JSON.stringify(metadata)
+          : String(metadata);
+      console.error(`[NextAuth] ${code} — ${detail}`);
+    },
+    warn(code) {
+      console.warn(`[NextAuth] WARN ${code}`);
+    },
+  },
   providers: [
     ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
       ? [GoogleProvider({ clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET })]
