@@ -107,7 +107,7 @@ export default function LobbyPage() {
             <Sparkles className="h-4 w-4 text-muted-foreground" />
             <span className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">Character Lobby</span>
           </div>
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-10">
             <div className="max-w-xl">
               <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
                 Discover EchoNest characters.
@@ -116,7 +116,7 @@ export default function LobbyPage() {
                 Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise.
               </p>
             </div>
-            <div className="flex justify-end md:ml-8 md:flex-1">
+            <div className="flex items-center justify-end self-stretch">
               <button
                 type="button"
                 onClick={() => {
@@ -134,7 +134,7 @@ export default function LobbyPage() {
                     src="/podcasticon.png"
                     alt="Enter podcast studio"
                     className={cn(
-                      "block h-[118px] w-auto object-contain drop-shadow-[0_18px_28px_rgba(92,53,22,0.2)] transition-transform duration-300 group-hover:scale-[1.02] sm:h-[138px]",
+                      "block h-[148px] w-auto object-contain drop-shadow-[0_18px_28px_rgba(92,53,22,0.2)] transition-transform duration-300 group-hover:scale-[1.02] sm:h-[172px]",
                       podcastMode ? "drop-shadow-[0_24px_38px_rgba(92,53,22,0.28)]" : ""
                     )}
                   />
