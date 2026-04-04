@@ -46,29 +46,73 @@ async function readElevenLabsError(response: Response) {
 // ── Voice Presets ────────────────────────────────────────────
 
 const RUNWAY_TO_ELEVENLABS_PRESET: Record<RunwayLiveVoicePreset, string> = {
-  adrian: "29vD33N1CtxCmqQRPOHJ",
-  clara: "21m00Tcm4TlvDq8ikWAM",
-  drew: "29vD33N1CtxCmqQRPOHJ",
-  emma: "IKne3meq5aSn9XLyUdCD",
-  maya: "EXAVITQu4vr4xnSDxMaL",
-  nathan: "29vD33N1CtxCmqQRPOHJ",
-  luna: "XB0fDUnXU5powFXDhCwa",
-  roman: "29vD33N1CtxCmqQRPOHJ",
-  petra: "EXAVITQu4vr4xnSDxMaL",
-  violet: "XB0fDUnXU5powFXDhCwa",
+  // ── Original 10 ─────────────────────────────────────────────
+  adrian:   "29vD33N1CtxCmqQRPOHJ",  // Drew — deep male
+  clara:    "21m00Tcm4TlvDq8ikWAM",  // Rachel — warm female
+  drew:     "29vD33N1CtxCmqQRPOHJ",  // Drew
+  emma:     "IKne3meq5aSn9XLyUdCD",  // Charlie — bright female
+  maya:     "EXAVITQu4vr4xnSDxMaL",  // Bella — calm female
+  nathan:   "29vD33N1CtxCmqQRPOHJ",  // Drew — casual male
+  luna:     "XB0fDUnXU5powFXDhCwa",  // Charlotte — soft female
+  roman:    "29vD33N1CtxCmqQRPOHJ",  // Drew — bold male
+  petra:    "EXAVITQu4vr4xnSDxMaL",  // Bella — precise female
+  violet:   "XB0fDUnXU5powFXDhCwa",  // Charlotte — expressive female
+  // ── Additional 20 ───────────────────────────────────────────
+  victoria: "EXAVITQu4vr4xnSDxMaL",  // Bella — powerful female
+  vincent:  "29vD33N1CtxCmqQRPOHJ",  // Drew — refined male
+  skye:     "21m00Tcm4TlvDq8ikWAM",  // Rachel — light female
+  max:      "29vD33N1CtxCmqQRPOHJ",  // Drew — bold male
+  morgan:   "29vD33N1CtxCmqQRPOHJ",  // Drew — neutral/deep
+  felix:    "IKne3meq5aSn9XLyUdCD",  // Charlie — enthusiastic male
+  mia:      "21m00Tcm4TlvDq8ikWAM",  // Rachel — gentle female
+  marcus:   "29vD33N1CtxCmqQRPOHJ",  // Drew — resonant male
+  summer:   "IKne3meq5aSn9XLyUdCD",  // Charlie — vibrant female
+  ruby:     "XB0fDUnXU5powFXDhCwa",  // Charlotte — rich female
+  aurora:   "XB0fDUnXU5powFXDhCwa",  // Charlotte — ethereal female
+  jasper:   "29vD33N1CtxCmqQRPOHJ",  // Drew — thoughtful male
+  leo:      "29vD33N1CtxCmqQRPOHJ",  // Drew — smooth male
+  nina:     "EXAVITQu4vr4xnSDxMaL",  // Bella — precise female
+  blake:    "29vD33N1CtxCmqQRPOHJ",  // Drew — neutral
+  david:    "29vD33N1CtxCmqQRPOHJ",  // Drew — authoritative male
+  sam:      "21m00Tcm4TlvDq8ikWAM",  // Rachel — casual neutral
+  georgia:  "21m00Tcm4TlvDq8ikWAM",  // Rachel — warm female
+  adam:     "29vD33N1CtxCmqQRPOHJ",  // Drew — calm male
+  zach:     "29vD33N1CtxCmqQRPOHJ",  // Drew — youthful male
 };
 
 const RUNWAY_PRESET_DESCRIPTIONS: Record<RunwayLiveVoicePreset, string> = {
-  adrian: "grounded, professional, steady",
-  clara: "warm, conversational, welcoming",
-  drew: "deep, authoritative, composed",
-  emma: "bright, energetic, upbeat",
-  maya: "calm, thoughtful, gentle",
-  nathan: "casual, friendly, relaxed",
-  luna: "soft, creative, dreamy",
-  roman: "bold, witty, fast-paced",
-  petra: "precise, academic, articulate",
-  violet: "playful, lively, expressive",
+  // ── Original 10 ─────────────────────────────────────────────
+  adrian:   "grounded, professional, steady",
+  clara:    "warm, conversational, welcoming",
+  drew:     "deep, authoritative, composed",
+  emma:     "bright, energetic, upbeat",
+  maya:     "calm, thoughtful, gentle",
+  nathan:   "casual, friendly, relaxed",
+  luna:     "soft, creative, dreamy",
+  roman:    "bold, witty, fast-paced",
+  petra:    "precise, academic, articulate",
+  violet:   "playful, lively, expressive",
+  // ── Additional 20 ───────────────────────────────────────────
+  victoria: "powerful, confident, commanding",
+  vincent:  "warm, refined, articulate",
+  skye:     "light, airy, optimistic",
+  max:      "direct, bold, high-energy",
+  morgan:   "deep, measured, trustworthy",
+  felix:    "bright, enthusiastic, upbeat",
+  mia:      "gentle, warm, nurturing",
+  marcus:   "strong, resonant, composed",
+  summer:   "vibrant, sunny, cheerful",
+  ruby:     "rich, expressive, passionate",
+  aurora:   "ethereal, soothing, mystical",
+  jasper:   "thoughtful, deliberate, wise",
+  leo:      "relaxed, smooth, confident",
+  nina:     "cool, crisp, precise",
+  blake:    "neutral, versatile, clear",
+  david:    "authoritative, polished, classic",
+  sam:      "casual, natural, conversational",
+  georgia:  "warm, welcoming, inviting",
+  adam:     "steady, calm, measured",
+  zach:     "youthful, energetic, approachable",
 };
 
 export const PRESET_VOICES = RUNWAY_LIVE_VOICE_PRESETS.map((voice) => ({

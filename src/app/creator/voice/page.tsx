@@ -7,6 +7,7 @@ import {
   Loader2,
   Mic,
   Plus,
+  Radio,
   Trash2,
   Upload,
   Volume2,
@@ -36,9 +37,21 @@ type VoiceLibraryResponse = {
   }>;
 };
 
+type RunwayVoice = {
+  id: string;
+  name: string;
+  description: string | null;
+  previewUrl: string | null;
+  status: "READY" | "PROCESSING" | "FAILED";
+  createdAt: string;
+};
+
 export default function VoiceLibraryPage() {
   const [voices, setVoices] = useState<VoiceLibraryResponse>({ presets: [], custom: [] });
   const [loading, setLoading] = useState(true);
+  const [runwayVoices, setRunwayVoices] = useState<RunwayVoice[]>([]);
+  const [runwayVoicesLoading, setRunwayVoicesLoading] = useState(true);
+  const [runwayVoicesUnavailable, setRunwayVoicesUnavailable] = useState(false);
   const [cloneName, setCloneName] = useState("");
   const [cloning, setCloning] = useState(false);
   const [previewingId, setPreviewingId] = useState("");
@@ -64,8 +77,27 @@ export default function VoiceLibraryPage() {
     }
   };
 
+  const loadRunwayVoices = async () => {
+    setRunwayVoicesLoading(true);
+    try {
+      const res = await fetch("/api/runway/voices", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) { setRunwayVoicesUnavailable(true); return; }
+        throw new Error(data.error || "Failed to load Runway voices");
+      }
+      if (data.unavailable) { setRunwayVoicesUnavailable(true); return; }
+      setRunwayVoices(Array.isArray(data.voices) ? data.voices : []);
+    } catch {
+      setRunwayVoicesUnavailable(true);
+    } finally {
+      setRunwayVoicesLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadVoices();
+    void loadRunwayVoices();
   }, []);
 
   useEffect(() => () => stopVoicePreview(), []);
@@ -165,7 +197,7 @@ export default function VoiceLibraryPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Custom voices" value={voices.custom.length} detail="Your reusable cloned voice library." />
         <StatCard label="Character assignments" value={totalAssignments} detail="How many characters already use a custom voice." />
-        <StatCard label="Preset voices" value={voices.presets.length} detail="Instant-ready voices for fast experiments." />
+        <StatCard label="Runway voices" value={runwayVoicesUnavailable ? voices.presets.length : runwayVoices.length || voices.presets.length} detail={runwayVoicesUnavailable ? "Preset voices ready to use." : runwayVoices.length > 0 ? "Custom voices in your Runway account." : "Preset voices ready to use."} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -296,6 +328,7 @@ export default function VoiceLibraryPage() {
             </p>
           </div>
         ) : (
+          <div className="max-h-[36rem] overflow-y-auto pr-1">
           <div className="grid gap-4 lg:grid-cols-2">
             {voices.custom.map((voice) => {
               const usageCount = voice._count?.characters || 0;
@@ -397,8 +430,120 @@ export default function VoiceLibraryPage() {
               );
             })}
           </div>
+          </div>
         )}
       </section>
+
+      {/* ── Runway Custom Voices ──────────────────────────────────── */}
+      {!runwayVoicesUnavailable && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Radio className="h-4 w-4 text-orange-600" />
+                Your Runway custom voices
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Custom voices created via the Runway Voices API. Assign one of these to a Runway avatar by entering its ID in the character editor.
+              </p>
+            </div>
+          </div>
+
+          {runwayVoicesLoading ? (
+            <div className="rounded-[28px] border border-border/70 bg-white px-6 py-10 text-center">
+              <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : runwayVoices.length === 0 ? (
+            <div className="rounded-[28px] border border-dashed border-orange-200 bg-orange-50/40 px-6 py-10 text-center">
+              <Radio className="mx-auto h-8 w-8 text-orange-400/60" />
+              <p className="mt-3 text-sm font-medium text-orange-900">No Runway custom voices yet</p>
+              <p className="mt-1 text-[13px] text-orange-700/70">
+                Create custom voices on the Runway platform and they will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-[36rem] overflow-y-auto pr-1">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {runwayVoices.map((voice) => (
+                  <article
+                    key={voice.id}
+                    className="rounded-[28px] border border-orange-200/60 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.04)]"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
+                          <Radio className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-[15px] font-semibold">{voice.name}</h3>
+                          {voice.description && (
+                            <p className="mt-0.5 text-[12px] text-muted-foreground line-clamp-2">{voice.description}</p>
+                          )}
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Added {new Date(voice.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={cn(
+                        "shrink-0 rounded-full px-3 py-1 text-[11px] font-medium",
+                        voice.status === "READY"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : voice.status === "PROCESSING"
+                            ? "bg-amber-50 text-amber-700"
+                            : "bg-rose-50 text-rose-700"
+                      )}>
+                        {voice.status === "READY" ? "Ready" : voice.status === "PROCESSING" ? "Processing…" : "Failed"}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {voice.previewUrl && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await playVoicePreview({
+                                previewKey: `runway-${voice.id}`,
+                                voiceId: voice.id,
+                                text: previewText,
+                                audioUrl: voice.previewUrl,
+                                onStart: setPreviewingId,
+                                onStop: (key) =>
+                                  setPreviewingId((cur) => (cur === key ? "" : cur)),
+                              });
+                            } catch (err) {
+                              console.error("[VoiceLibraryPage] Runway preview failed:", err);
+                            }
+                          }}
+                          className="inline-flex h-10 items-center gap-2 rounded-full border border-border px-4 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+                        >
+                          {previewingId === `runway-${voice.id}` ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Volume2 className="h-4 w-4" />
+                          )}
+                          {previewingId === `runway-${voice.id}` ? "Previewing" : "Preview"}
+                        </button>
+                      )}
+                      <div className="ml-auto flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-[11px] text-orange-700">
+                        <span className="font-mono font-medium">{voice.id}</span>
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard.writeText(voice.id)}
+                          className="ml-1 hover:text-orange-900"
+                          title="Copy voice ID"
+                        >
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="space-y-4">
         <div>
