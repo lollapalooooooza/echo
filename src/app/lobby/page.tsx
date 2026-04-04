@@ -345,10 +345,7 @@ export default function LobbyPage() {
 
                     {/* Content */}
                     <div className="space-y-3 p-5">
-                      <div className="flex items-start gap-2">
-                        <Headphones className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-                        <p className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground">{p.topic}</p>
-                      </div>
+                      <p className="line-clamp-2 text-[16px] font-semibold leading-snug text-foreground">{p.topic}</p>
 
                       {p.description && (
                         <p className="line-clamp-2 text-[13px] text-muted-foreground">{p.description}</p>
