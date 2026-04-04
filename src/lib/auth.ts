@@ -44,10 +44,22 @@ export const authOptions: NextAuthOptions = {
   },
   providers: [
     ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-      ? [GoogleProvider({ clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET })]
+      ? [GoogleProvider({
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          // Allow NextAuth to link a Google sign-in to an existing User row that
+          // has the same email but no linked Account yet.  This fixes the
+          // OAuthAccountNotLinked error that occurs when a prior sign-in attempt
+          // created the User row but failed before writing the Account row.
+          allowDangerousEmailAccountLinking: true,
+        })]
       : []),
     ...(env.GITHUB_ID && env.GITHUB_SECRET
-      ? [GitHubProvider({ clientId: env.GITHUB_ID, clientSecret: env.GITHUB_SECRET })]
+      ? [GitHubProvider({
+          clientId: env.GITHUB_ID,
+          clientSecret: env.GITHUB_SECRET,
+          allowDangerousEmailAccountLinking: true,
+        })]
       : []),
     ...(env.NEXT_PUBLIC_DEV_AUTH === "true"
       ? [CredentialsProvider({
