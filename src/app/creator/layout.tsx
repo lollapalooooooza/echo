@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { AudioLines, LayoutDashboard, BookOpen, User, BarChart3, Loader2, Menu, X, Play, Settings, LogOut } from "lucide-react";
+import { AudioLines, LayoutDashboard, BookOpen, User, BarChart3, Loader2, Menu, X, Play, Settings, LogOut, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
+import { ApiTimerBadge } from "@/components/api-timer-badge";
 
 const nav = [
   { label:"Dashboard", href:"/creator", icon: LayoutDashboard },
@@ -13,6 +14,7 @@ const nav = [
   { label:"Characters", href:"/creator/character", icon: User },
   { label:"Voices", href:"/creator/voice", icon: AudioLines },
   { label:"Analytics", href:"/creator/analytics", icon: BarChart3 },
+  { label:"API", href:"/creator/api", icon: Cpu },
   { label:"Settings", href:"/creator/settings", icon: Settings },
 ];
 
@@ -79,8 +81,11 @@ export default function CreatorLayout({ children }: { children: React.ReactNode 
         )}
       </aside>
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center border-b border-border bg-white px-4 lg:px-6">
+        <header className="flex h-14 items-center justify-between border-b border-border bg-white px-4 lg:px-6">
           <button onClick={()=>setOpen(true)} className="lg:hidden"><Menu className="h-5 w-5"/></button>
+          <div className="ml-auto">
+            <ApiTimerBadge />
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto"><div className="mx-auto max-w-[92rem] px-4 py-8 lg:px-6">{children}</div></main>
       </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { ApiTimerBadge } from "@/components/api-timer-badge";
 import {
   AlertCircle,
   ArrowLeft,
@@ -209,6 +210,17 @@ function RunwaySessionSurface({
   useEffect(() => {
     if (!videoReady || session.state !== "active") {
       if (session.state !== "active") {
+        // Session ended — record elapsed time against the free quota
+        if (sessionStartedAtRef.current !== null) {
+          const secs = Math.floor((Date.now() - sessionStartedAtRef.current) / 1000);
+          if (secs > 0) {
+            fetch("/api/user/session-time", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ seconds: secs }),
+            }).catch(() => {});
+          }
+        }
         sessionStartedAtRef.current = null;
         setElapsedSeconds(0);
       }
@@ -549,6 +561,7 @@ export function RunwayLiveRoom({
             Leave
           </Link>
           <div className="flex items-center gap-2">
+            <ApiTimerBadge size="sm" />
             {onUseFallback && (
               <button
                 onClick={onUseFallback}

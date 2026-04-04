@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiTimerBadge } from "@/components/api-timer-badge";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -785,6 +786,7 @@ export function FallbackRoom({
         </Link>
 
         <div className="flex items-center gap-2">
+          <ApiTimerBadge size="sm" />
           {canReturnToRunwayLive && onReturnToRunwayLive && (
             <button
               onClick={onReturnToRunwayLive}

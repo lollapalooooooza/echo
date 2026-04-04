@@ -56,7 +56,10 @@ model User {
   email          String?           @unique
   emailVerified  DateTime?
   image          String?
-  lastLoginAt    DateTime?
+  lastLoginAt       DateTime?
+  // API / credits
+  runwayApiKey      String?   // user's own Runway API key (stored plain — scoped to this org)
+  freeSecondsUsed   Int       @default(0)  // seconds consumed from the free 5-min quota
   accounts       Account[]
   sessions       Session[]
   sources        KnowledgeSource[]

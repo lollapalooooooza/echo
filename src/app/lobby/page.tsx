@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Check, MessageCircle, Loader2, Mic, Radio, Search, Sparkles, Users, X, Headphones } from "lucide-react";
 import { formatNumber, cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
+import { ApiTimerBadge } from "@/components/api-timer-badge";
 
 const toneCfg: Record<string, { label: string; color: string; bg: string }> = {
   friendly: { label: "Friendly", color: "text-emerald-700", bg: "bg-emerald-50" },
@@ -123,6 +124,7 @@ export default function LobbyPage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <BrandMark href="/" size="sm" />
           <div className="flex items-center gap-3">
+            <ApiTimerBadge size="sm" />
             <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
               <Radio className="h-3 w-3 text-emerald-600" />
               <span className="text-[11px] font-medium text-emerald-700">{characters.length} Live</span>
