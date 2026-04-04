@@ -301,12 +301,7 @@ function RunwaySessionSurface({
                 )}
               >
                 <h2
-                  className={cn(
-                    "text-[clamp(1.2rem,2vw,1.75rem)] leading-[0.96] tracking-[-0.03em]",
-                    isLight
-                      ? "text-slate-950 drop-shadow-[0_1px_8px_rgba(255,255,255,0.16)]"
-                      : "text-white drop-shadow-[0_1px_10px_rgba(0,0,0,0.22)]"
-                  )}
+                  className="text-[clamp(1.2rem,2vw,1.75rem)] leading-[0.96] tracking-[-0.03em] text-white drop-shadow-[0_1px_10px_rgba(0,0,0,0.22)]"
                   style={{ fontFamily: "var(--font-display)" }}
                 >
                   {character.name}
@@ -328,9 +323,9 @@ function RunwaySessionSurface({
                     boxShadow: "0 0 10px rgba(255,106,61,0.28)",
                   }}
                 />
-                <span>Live</span>
-                <span className={cn("h-3.5 w-px", isLight ? "bg-slate-300/80" : "bg-white/24")} />
-                <span>{formatElapsed(elapsedSeconds)}</span>
+                <span className="text-white">Live</span>
+                <span className="h-3.5 w-px bg-white/24" />
+                <span className="text-white">{formatElapsed(elapsedSeconds)}</span>
               </div>
             </div>
 
