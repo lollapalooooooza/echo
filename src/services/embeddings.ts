@@ -4,8 +4,9 @@ import { db } from "@/lib/db";
 
 let _client: OpenAI | null = null;
 function openai(): OpenAI { if (!_client) _client = new OpenAI({ apiKey: env.OPENAI_API_KEY }); return _client; }
-const EMBEDDING_WRITE_RETRY_LIMIT = 3;
-const EMBEDDING_WRITE_RETRY_DELAY_MS = 250;
+const EMBEDDING_WRITE_BATCH_SIZE = 8;
+const EMBEDDING_WRITE_RETRY_LIMIT = 4;
+const EMBEDDING_WRITE_RETRY_DELAY_MS = 300;
 
 function isRetryableEmbeddingWriteError(error: unknown) {
   const message =
@@ -15,11 +16,47 @@ function isRetryableEmbeddingWriteError(error: unknown) {
         ? String((error as any).message || "")
         : "";
 
-  return /Transaction API error: Transaction not found/i.test(message);
+  return (
+    /Transaction API error: Transaction not found/i.test(message) ||
+    /Timed out fetching a new connection from the connection pool/i.test(message) ||
+    /Timed out fetching/i.test(message) ||
+    /Can't reach database server/i.test(message)
+  );
 }
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withEmbeddingWriteRetry<T>(task: () => Promise<T>) {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await task();
+    } catch (error) {
+      attempt += 1;
+      if (!isRetryableEmbeddingWriteError(error) || attempt >= EMBEDDING_WRITE_RETRY_LIMIT) {
+        throw error;
+      }
+      await wait(EMBEDDING_WRITE_RETRY_DELAY_MS * attempt);
+    }
+  }
+}
+
+function buildEmbeddingUpdateBatchQuery(batchSize: number) {
+  const valueTuples = Array.from({ length: batchSize }, (_, index) => {
+    const idParam = index * 2 + 1;
+    const embeddingParam = index * 2 + 2;
+    return `($${idParam}, $${embeddingParam})`;
+  }).join(", ");
+
+  return `
+    UPDATE "ContentChunk" AS chunk
+    SET embedding = payload.embedding::vector
+    FROM (VALUES ${valueTuples}) AS payload(id, embedding)
+    WHERE chunk.id = payload.id
+  `;
 }
 
 export async function embedText(text: string): Promise<number[]> {
@@ -42,31 +79,16 @@ export async function storeEmbeddings(chunks: { id: string; content: string }[])
   console.log(`[Embed] Embedding ${chunks.length} chunks…`);
   const embeddings = await embedBatch(chunks.map((c) => c.content));
 
-  // Keep raw vector writes fully sequential. This is slower than small parallel
-  // batches, but it avoids Prisma engine state issues we were still seeing in
-  // production during large knowledge ingests.
-  for (let index = 0; index < chunks.length; index += 1) {
-    const chunk = chunks[index];
-    const embedding = embeddings[index];
-    const vecStr = `[${embedding.join(",")}]`;
-    let attempt = 0;
+  for (let index = 0; index < chunks.length; index += EMBEDDING_WRITE_BATCH_SIZE) {
+    const batch = chunks.slice(index, index + EMBEDDING_WRITE_BATCH_SIZE);
+    const batchEmbeddings = embeddings.slice(index, index + EMBEDDING_WRITE_BATCH_SIZE);
+    const query = buildEmbeddingUpdateBatchQuery(batch.length);
+    const params = batch.flatMap((chunk, batchIndex) => [
+      chunk.id,
+      `[${batchEmbeddings[batchIndex].join(",")}]`,
+    ]);
 
-    while (true) {
-      try {
-        await db.$executeRawUnsafe(
-          `UPDATE "ContentChunk" SET embedding = $1::vector WHERE id = $2`,
-          vecStr,
-          chunk.id
-        );
-        break;
-      } catch (error) {
-        attempt += 1;
-        if (!isRetryableEmbeddingWriteError(error) || attempt >= EMBEDDING_WRITE_RETRY_LIMIT) {
-          throw error;
-        }
-        await wait(EMBEDDING_WRITE_RETRY_DELAY_MS * attempt);
-      }
-    }
+    await withEmbeddingWriteRetry(() => db.$executeRawUnsafe(query, ...params));
   }
 
   console.log(`[Embed] ✓ Stored ${chunks.length} embeddings`);
