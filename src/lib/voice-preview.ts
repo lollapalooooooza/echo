@@ -4,12 +4,13 @@ type PreviewArgs = {
   previewKey: string;
   voiceId: string;
   text: string;
+  audioUrl?: string | null;
   onStart?: (previewKey: string) => void;
   onStop?: (previewKey: string) => void;
 };
 
 let activeAudio: HTMLAudioElement | null = null;
-let activeUrl: string | null = null;
+let activeObjectUrl: string | null = null;
 let activeController: AbortController | null = null;
 let activePreviewKey = "";
 let activeOnStop: ((previewKey: string) => void) | undefined;
@@ -31,9 +32,9 @@ function clearActivePreview(options: { notify?: boolean; settle?: "resolve" | "n
     activeAudio = null;
   }
 
-  if (activeUrl) {
-    URL.revokeObjectURL(activeUrl);
-    activeUrl = null;
+  if (activeObjectUrl) {
+    URL.revokeObjectURL(activeObjectUrl);
+    activeObjectUrl = null;
   }
 
   activePreviewKey = "";
@@ -57,6 +58,7 @@ export async function playVoicePreview({
   previewKey,
   voiceId,
   text,
+  audioUrl,
   onStart,
   onStop,
 }: PreviewArgs) {
@@ -68,31 +70,37 @@ export async function playVoicePreview({
   activeOnStop = onStop;
   onStart?.(previewKey);
 
-  const res = await fetch("/api/voice/synthesize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      voiceId,
-      text,
-      stream: false,
-    }),
-    signal: controller.signal,
-  });
+  let audio: HTMLAudioElement;
 
-  if (controller.signal.aborted || activePreviewKey !== previewKey) return;
+  if (audioUrl) {
+    audio = new Audio(audioUrl);
+  } else {
+    const res = await fetch("/api/voice/synthesize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        voiceId,
+        text,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
 
-  if (!res.ok) {
-    clearActivePreview({ notify: true, settle: "resolve" });
-    throw new Error("Preview failed");
+    if (controller.signal.aborted || activePreviewKey !== previewKey) return;
+
+    if (!res.ok) {
+      clearActivePreview({ notify: true, settle: "resolve" });
+      throw new Error("Preview failed");
+    }
+
+    const buffer = await res.arrayBuffer();
+    if (controller.signal.aborted || activePreviewKey !== previewKey) return;
+
+    activeObjectUrl = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
+    audio = new Audio(activeObjectUrl);
   }
 
-  const buffer = await res.arrayBuffer();
-  if (controller.signal.aborted || activePreviewKey !== previewKey) return;
-
-  const blobUrl = URL.createObjectURL(new Blob([buffer], { type: "audio/mpeg" }));
-  const audio = new Audio(blobUrl);
   activeAudio = audio;
-  activeUrl = blobUrl;
 
   await new Promise<void>((resolve, reject) => {
     activeResolve = resolve;

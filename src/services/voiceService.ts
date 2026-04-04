@@ -390,7 +390,7 @@ export async function createDesignedVoice(
  */
 export async function listVoices() {
   if (!env.ELEVENLABS_API_KEY) {
-    return { presets: PRESET_VOICES, custom: [] };
+    return { presets: PRESET_VOICES, custom: [], providerAvailable: false };
   }
 
   try {
@@ -400,9 +400,9 @@ export async function listVoices() {
     const custom = (data.voices || []).filter(
       (v: any) => v.category === "cloned" || v.category === "generated"
     );
-    return { presets: PRESET_VOICES, custom };
+    return { presets: PRESET_VOICES, custom, providerAvailable: true };
   } catch (e) {
     console.warn("[Voice] Failed to list voices:", e);
-    return { presets: PRESET_VOICES, custom: [] };
+    return { presets: PRESET_VOICES, custom: [], providerAvailable: false };
   }
 }

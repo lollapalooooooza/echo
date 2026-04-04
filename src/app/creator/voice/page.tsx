@@ -13,6 +13,11 @@ import {
   Wand2,
 } from "lucide-react";
 
+import {
+  MAX_VOICE_CLONE_DURATION_SECS,
+  MIN_VOICE_CLONE_DURATION_SECS,
+  validateVoiceCloneFile,
+} from "@/lib/voice-clone-client";
 import { playVoicePreview, stopVoicePreview } from "@/lib/voice-preview";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +29,8 @@ type VoiceLibraryResponse = {
     elevenLabsVoiceId: string;
     isCloned: boolean;
     createdAt: string;
+    providerPreviewUrl?: string | null;
+    providerStatus?: "READY" | "MISSING" | null;
     _count?: { characters?: number };
     characters?: { id: string; name: string }[];
   }>;
@@ -71,7 +78,7 @@ export default function VoiceLibraryPage() {
   const handleClone = async () => {
     const file = fileRef.current?.files?.[0];
     if (!cloneName.trim() || !file) {
-      setError("Choose a voice name and upload an audio sample first.");
+      setError("Choose a voice name and upload an MP3 sample first.");
       return;
     }
 
@@ -80,9 +87,11 @@ export default function VoiceLibraryPage() {
     setError("");
 
     try {
+      const { durationSecs } = await validateVoiceCloneFile(file);
       const form = new FormData();
       form.append("name", cloneName.trim());
       form.append("audio", file);
+      form.append("durationSecs", durationSecs.toFixed(2));
 
       const res = await fetch("/api/voice/clone", {
         method: "POST",
@@ -168,7 +177,7 @@ export default function VoiceLibraryPage() {
             <div>
               <h2 className="text-lg font-semibold">Clone voice</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Upload a clear sample between 30 seconds and 5 minutes. This creates a reusable voice you can assign across multiple characters.
+                Upload a clean MP3 sample between {MIN_VOICE_CLONE_DURATION_SECS} seconds and {MAX_VOICE_CLONE_DURATION_SECS / 60} minutes. This creates a reusable Echo playback voice you can assign across characters.
               </p>
             </div>
           </div>
@@ -189,7 +198,7 @@ export default function VoiceLibraryPage() {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".mp3,.wav,.m4a,.ogg,.webm,audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/webm"
+                accept=".mp3,audio/mpeg,audio/mp3"
                 className="block h-11 w-full rounded-2xl border border-border px-4 py-2.5 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-muted file:px-3 file:py-1 file:text-[12px] file:font-medium"
               />
             </label>
@@ -206,7 +215,7 @@ export default function VoiceLibraryPage() {
               {cloning ? "Cloning voice..." : "Clone voice"}
             </button>
             <p className="text-[12px] text-muted-foreground">
-              Tip: use WAV, MP3, M4A, OGG, or WebM under 11MB, with clean speech and no background music.
+              Tip: use a single-speaker MP3 with minimal background noise for the most reliable clone.
             </p>
           </div>
 
@@ -290,6 +299,7 @@ export default function VoiceLibraryPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             {voices.custom.map((voice) => {
               const usageCount = voice._count?.characters || 0;
+              const previewUnavailable = voice.providerStatus === "MISSING" && !voice.providerPreviewUrl;
               return (
                 <article
                   key={voice.id}
@@ -305,6 +315,11 @@ export default function VoiceLibraryPage() {
                         <p className="mt-1 text-[12px] text-muted-foreground">
                           {voice.isCloned ? "Audio clone" : "Designed from description"} · Added {new Date(voice.createdAt).toLocaleDateString()}
                         </p>
+                        {voice.providerStatus === "MISSING" && (
+                          <p className="mt-1 text-[12px] text-amber-700">
+                            Missing from ElevenLabs. Re-clone this voice to restore preview and playback.
+                          </p>
+                        )}
                       </div>
                     </div>
                     <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
@@ -338,6 +353,7 @@ export default function VoiceLibraryPage() {
                             previewKey: voice.id,
                             voiceId: voice.elevenLabsVoiceId,
                             text: previewText,
+                            audioUrl: voice.providerPreviewUrl,
                             onStart: setPreviewingId,
                             onStop: (previewKey) =>
                               setPreviewingId((current) => (current === previewKey ? "" : current)),
@@ -346,6 +362,7 @@ export default function VoiceLibraryPage() {
                           console.error("[VoiceLibraryPage] Preview failed:", err);
                         }
                       }}
+                      disabled={previewUnavailable}
                       className="inline-flex h-10 items-center gap-2 rounded-full border border-border px-4 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground disabled:opacity-60"
                     >
                       {previewingId === voice.id ? (
@@ -353,7 +370,7 @@ export default function VoiceLibraryPage() {
                       ) : (
                         <Volume2 className="h-4 w-4" />
                       )}
-                      {previewingId === voice.id ? "Previewing" : "Preview"}
+                      {previewingId === voice.id ? "Previewing" : previewUnavailable ? "Unavailable" : "Preview"}
                     </button>
 
                     <button
