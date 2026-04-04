@@ -63,8 +63,9 @@ model User {
   characters     Character[]
   voices         Voice[]
   usageRecords   UsageRecord[]
-  uploadedAssets UploadedAsset[]
-  createdAt      DateTime          @default(now())
+  uploadedAssets    UploadedAsset[]
+  publishedPodcasts PublishedPodcast[]
+  createdAt         DateTime          @default(now())
   updatedAt      DateTime          @default(now()) @updatedAt
 }
 
@@ -192,6 +193,29 @@ model Character {
   conversations    Conversation[]
   analytics        AnalyticsDaily[]
   knowledgeSources CharacterKnowledgeSource[]
+  podcastsAsA      PublishedPodcast[]         @relation("podcastCharacterA")
+  podcastsAsB      PublishedPodcast[]         @relation("podcastCharacterB")
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ── Published Podcasts ──────────────────────────────────────
+
+model PublishedPodcast {
+  id           String          @id @default(cuid())
+  userId       String
+  characterAId String
+  characterBId String
+  topic        String          @db.Text
+  description  String?         @db.Text
+  status       CharacterStatus @default(PUBLISHED)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterA Character @relation("podcastCharacterA", fields: [characterAId], references: [id], onDelete: Cascade)
+  characterB Character @relation("podcastCharacterB", fields: [characterBId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])

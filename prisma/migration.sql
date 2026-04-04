@@ -285,5 +285,25 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
+-- ── Published Podcasts ──────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS "PublishedPodcast" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "userId" TEXT NOT NULL,
+  "characterAId" TEXT NOT NULL,
+  "characterBId" TEXT NOT NULL,
+  "topic" TEXT NOT NULL,
+  "description" TEXT,
+  "status" "CharacterStatus" NOT NULL DEFAULT 'PUBLISHED',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "PublishedPodcast_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "PublishedPodcast_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "PublishedPodcast_characterAId_fkey" FOREIGN KEY ("characterAId") REFERENCES "Character"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "PublishedPodcast_characterBId_fkey" FOREIGN KEY ("characterBId") REFERENCES "Character"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "PublishedPodcast_userId_idx" ON "PublishedPodcast"("userId");
+CREATE INDEX IF NOT EXISTS "PublishedPodcast_status_idx" ON "PublishedPodcast"("status");
+
 -- Done!
 SELECT 'Migration complete!' as status;

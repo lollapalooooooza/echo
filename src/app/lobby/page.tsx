@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, MessageCircle, Loader2, Mic, Radio, Search, Sparkles, Users, X } from "lucide-react";
+import { ArrowRight, Check, MessageCircle, Loader2, Mic, Radio, Search, Sparkles, Users, X, Headphones } from "lucide-react";
 import { formatNumber, cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
 
@@ -38,10 +38,15 @@ function LobbyCharacterArt({ character }: { character: any }) {
   );
 }
 
+type LobbyTab = "characters" | "podcasts";
+
 export default function LobbyPage() {
   const router = useRouter();
+  const [lobbyTab, setLobbyTab] = useState<LobbyTab>("characters");
   const [characters, setCharacters] = useState<any[]>([]);
+  const [podcasts, setPodcasts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [podcastsLoading, setPodcastsLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [activeTone, setActiveTone] = useState("all");
   const [podcastMode, setPodcastMode] = useState(false);
@@ -57,6 +62,18 @@ export default function LobbyPage() {
       })
       .catch(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (lobbyTab !== "podcasts") return;
+    setPodcastsLoading(true);
+    fetch("/api/podcasts")
+      .then((r) => r.json())
+      .then((d) => {
+        setPodcasts(Array.isArray(d) ? d : []);
+        setPodcastsLoading(false);
+      })
+      .catch(() => setPodcastsLoading(false));
+  }, [lobbyTab]);
 
   const filtered = characters.filter((c) => {
     const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.bio.toLowerCase().includes(search.toLowerCase());
@@ -103,20 +120,44 @@ export default function LobbyPage() {
       <div className="mx-auto max-w-6xl px-6 py-10">
         {/* Hero section */}
         <div className="mb-10">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <span className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">Character Lobby</span>
+          <div className="mb-3 inline-flex items-center rounded-full border border-border/60 bg-neutral-50 p-0.5">
+            <button
+              onClick={() => { setLobbyTab("characters"); setPodcastMode(false); setPodcastSelection([]); setPodcastTopic(""); }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium uppercase tracking-wider transition-all",
+                lobbyTab === "characters"
+                  ? "bg-white text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Character Lobby
+            </button>
+            <button
+              onClick={() => { setLobbyTab("podcasts"); setPodcastMode(false); setPodcastSelection([]); setPodcastTopic(""); }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium uppercase tracking-wider transition-all",
+                lobbyTab === "podcasts"
+                  ? "bg-white text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Headphones className="h-3.5 w-3.5" />
+              Podcast Lobby
+            </button>
           </div>
           <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-10">
             <div className="max-w-xl">
               <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-                Discover EchoNest characters.
+                {lobbyTab === "characters" ? "Discover EchoNest characters." : "Discover EchoNest podcasts."}
               </h1>
               <p className="mt-2 max-w-lg text-[15px] text-muted-foreground">
-                Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise.
+                {lobbyTab === "characters"
+                  ? "Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise."
+                  : "Two AI characters, one topic. Tune into a live podcast or publish your own character combo."}
               </p>
             </div>
-            <div className="flex items-center justify-end self-stretch">
+            {lobbyTab === "characters" && <div className="flex items-center justify-end self-stretch">
               <button
                 type="button"
                 onClick={() => {
@@ -139,12 +180,12 @@ export default function LobbyPage() {
                     )}
                   />
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
 
-        {/* Search + filters */}
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Search + filters (characters only) */}
+        {lobbyTab === "characters" && <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
             <input
@@ -171,10 +212,10 @@ export default function LobbyPage() {
               </button>
             ))}
           </div>
-        </div>
+        </div>}
 
         {/* Podcast selection banner */}
-        {podcastMode && (
+        {lobbyTab === "characters" && podcastMode && (
           <div className="mb-6 rounded-[20px] border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -229,8 +270,102 @@ export default function LobbyPage() {
           </div>
         )}
 
+        {/* Podcast Grid */}
+        {lobbyTab === "podcasts" && (
+          podcastsLoading ? (
+            <div className="py-24 text-center">
+              <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground/40" />
+            </div>
+          ) : podcasts.length === 0 ? (
+            <div className="py-24 text-center">
+              <Headphones className="mx-auto mb-4 h-12 w-12 text-muted-foreground/20" />
+              <p className="text-sm text-muted-foreground mb-2">No podcasts published yet.</p>
+              <p className="text-[13px] text-muted-foreground/70">
+                Switch to the Character Lobby and use podcast mode to create one!
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {podcasts.map((p: any) => {
+                const toneA = toneCfg[p.characterA?.personalityTone] || toneCfg.friendly;
+                const toneB = toneCfg[p.characterB?.personalityTone] || toneCfg.friendly;
+
+                return (
+                  <Link
+                    key={p.id}
+                    href={`/podcast?a=${p.characterAId}&b=${p.characterBId}&topic=${encodeURIComponent(p.topic)}`}
+                    className="group relative flex flex-col overflow-hidden rounded-[28px] border border-border/50 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-neutral-200/70"
+                  >
+                    {/* Dual avatar header */}
+                    <div className="relative flex aspect-[5/3] items-stretch overflow-hidden bg-neutral-100">
+                      <div className="relative w-1/2 overflow-hidden">
+                        {p.characterA?.avatarUrl ? (
+                          <img src={p.characterA.avatarUrl} alt={p.characterA.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-neutral-100 to-neutral-200 text-4xl font-semibold text-neutral-400">
+                            {p.characterA?.name?.[0]}
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative w-1/2 overflow-hidden">
+                        {p.characterB?.avatarUrl ? (
+                          <img src={p.characterB.avatarUrl} alt={p.characterB.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-neutral-100 to-neutral-200 text-4xl font-semibold text-neutral-400">
+                            {p.characterB?.name?.[0]}
+                          </div>
+                        )}
+                      </div>
+                      {/* Center divider with mic icon */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white shadow-lg">
+                          <Mic className="h-4 w-4" />
+                        </div>
+                      </div>
+                      {/* Gradient overlay */}
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                      {/* Names at bottom */}
+                      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-4 text-white">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="truncate text-sm font-semibold">{p.characterA?.name}</span>
+                          <span className={cn("shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium", toneA.bg, toneA.color)}>{toneA.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-0 text-right">
+                          <span className={cn("shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium", toneB.bg, toneB.color)}>{toneB.label}</span>
+                          <span className="truncate text-sm font-semibold">{p.characterB?.name}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="space-y-3 p-5">
+                      <div className="flex items-start gap-2">
+                        <Headphones className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                        <p className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground">{p.topic}</p>
+                      </div>
+
+                      {p.description && (
+                        <p className="line-clamp-2 text-[13px] text-muted-foreground">{p.description}</p>
+                      )}
+
+                      <div className="flex items-center justify-between border-t border-border/40 pt-3">
+                        {p.user?.name && (
+                          <span className="text-[12px] text-muted-foreground/80">by {p.user.name}</span>
+                        )}
+                        <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-orange-600">
+                          Listen <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )
+        )}
+
         {/* Character Grid */}
-        {loading ? (
+        {lobbyTab === "characters" && (loading ? (
           <div className="py-24 text-center">
             <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground/40" />
           </div>
@@ -356,7 +491,7 @@ export default function LobbyPage() {
               );
             })}
           </div>
-        )}
+        ))}
       </div>
     </div>
   );
