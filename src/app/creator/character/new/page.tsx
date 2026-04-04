@@ -138,7 +138,7 @@ export default function NewCharacterPage() {
         setSaving(false);
         return;
       }
-      const char = data;
+      const char = data.character || data;
 
       if (char.avatarUrl) {
         setGeneratingVideo(true);
@@ -151,6 +151,10 @@ export default function NewCharacterPage() {
           if (!videoRes.ok) console.warn("Video generation failed:", videoData?.error || `API ${videoRes.status}`);
         } catch (e) { console.warn("Video generation failed:", e); }
         setGeneratingVideo(false);
+      }
+
+      if (data.runwaySync?.error) {
+        alert(`Character saved, but Runway did not fully finish setup: ${data.runwaySync.error}`);
       }
 
       router.push(`/creator/character/${char.id}`);
@@ -208,7 +212,7 @@ export default function NewCharacterPage() {
         {/* Knowledge Base Selection */}
         <Section title="Knowledge Base" icon={<BookOpen className="h-4 w-4" />}>
           <p className="text-[13px] text-muted-foreground mb-3">
-            Select which knowledge sources this character can reference. If none selected, the character uses all your knowledge.
+            Select which knowledge sources should be linked to this character. Leaving this empty will not auto-attach any knowledge to the Runway avatar on save.
           </p>
           <KnowledgeSelection
             sources={knowledgeSources}

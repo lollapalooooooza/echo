@@ -91,12 +91,23 @@ function CharacterPlaceholder({
   return (
     <div
       className={cn(
-        "relative flex h-full min-h-full items-center justify-center overflow-hidden",
+        "relative flex h-full min-h-full w-full items-center justify-center overflow-hidden",
         isLight ? "bg-[#f6f2ea]" : "bg-neutral-950"
       )}
     >
       {character.avatarUrl ? (
-        <img src={character.avatarUrl} alt={character.name} className="absolute inset-0 h-full w-full object-cover opacity-25 blur-[2px]" />
+        <>
+          <img
+            src={character.avatarUrl}
+            alt={character.name}
+            className="absolute inset-0 h-full w-full scale-[1.04] object-cover opacity-32 blur-[12px]"
+          />
+          <img
+            src={character.avatarUrl}
+            alt={character.name}
+            className="absolute inset-0 h-full w-full object-cover opacity-54"
+          />
+        </>
       ) : (
         <div className={cn("absolute inset-0 bg-gradient-to-br", isLight ? "from-white via-[#f6f2ea] to-[#ece5d7]" : "from-neutral-900 via-neutral-950 to-black")} />
       )}
@@ -104,28 +115,28 @@ function CharacterPlaceholder({
         className={cn(
           "absolute inset-0",
           isLight
-            ? "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.85),_transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.1),rgba(246,242,234,0.92))]"
+            ? "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.28),_transparent_38%),linear-gradient(180deg,rgba(11,16,30,0.2),rgba(11,16,30,0.48))]"
             : "bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_42%),linear-gradient(180deg,rgba(6,8,15,0.12),rgba(6,8,15,0.92))]"
         )}
       />
-      <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),transparent_68%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.12),transparent_52%)]" />
       <div className="relative z-10 flex max-w-2xl flex-col items-center px-6 text-center sm:px-10">
         <div
           className={cn(
-            "inline-flex items-center gap-3 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.26em] backdrop-blur-xl",
-            isLight ? "border-white/85 bg-white/72 text-emerald-700" : "border-white/15 bg-white/8 text-emerald-100/80"
+            "inline-flex items-center gap-3 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)] backdrop-blur-xl",
+            isLight ? "border-white/24 bg-white/14" : "border-white/15 bg-white/8"
           )}
         >
-          <Loader2 className={cn("h-4 w-4 animate-spin", isLight ? "text-emerald-700" : "text-emerald-100/80")} />
+          <Loader2 className="h-4 w-4 animate-spin text-white" />
           {label}
         </div>
         <h2
-          className={cn("mt-6 text-[clamp(2.2rem,5vw,4.25rem)] leading-[0.95] tracking-[-0.04em]", isLight ? "text-slate-900" : "text-white")}
+          className="mt-6 text-[clamp(2.2rem,5vw,4.25rem)] leading-[0.95] tracking-[-0.04em] text-white drop-shadow-[0_10px_30px_rgba(15,23,42,0.24)]"
           style={{ fontFamily: "var(--font-display)" }}
         >
           {character.name}
         </h2>
-        <p className={cn("mt-5 max-w-xl text-[15px] leading-7 sm:text-base", isLight ? "text-slate-600" : "text-white/68")}>
+        <p className="mt-5 max-w-xl text-[15px] leading-7 text-white/82 sm:text-base">
           {detail}
         </p>
       </div>
@@ -219,12 +230,8 @@ function RunwaySessionSurface({
   }, [session.state, videoReady]);
 
   const liveNeedsWake = session.state === "active" && (!canPlaybackAudio || (!!media.hasMic && (!media.isMicEnabled || !!media.micError)));
-  const titleGlassClass = isLight
-    ? "bg-white/68 text-slate-950 ring-1 ring-white/85"
-    : "bg-black/30 text-white ring-1 ring-white/12";
-  const badgeGlassClass = isLight
-    ? "bg-white/78 text-slate-950 ring-1 ring-white/85"
-    : "bg-black/36 text-white ring-1 ring-white/12";
+  const titleGlassClass = "bg-black/18 text-white ring-1 ring-white/20 shadow-[0_12px_30px_rgba(15,23,42,0.18)]";
+  const badgeGlassClass = "bg-black/20 text-white ring-1 ring-white/20 shadow-[0_12px_30px_rgba(15,23,42,0.16)]";
   const controlActiveClass = isLight
     ? "bg-slate-950/92 text-white hover:bg-slate-950"
     : "bg-white/18 text-white hover:bg-white/24";
@@ -532,8 +539,8 @@ export function RunwayLiveRoom({
           <Link
             href="/lobby"
             className={cn(
-              "inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm transition-colors",
-              isLight ? "bg-white/80 text-slate-600 hover:text-slate-900" : "bg-white/10 text-white/50 hover:text-white/80"
+              "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm text-white shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
+              isLight ? "border-white/28 bg-white/14 hover:bg-white/18" : "border-white/12 bg-white/10 hover:bg-white/14"
             )}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -544,10 +551,10 @@ export function RunwayLiveRoom({
               <button
                 onClick={onUseFallback}
                 className={cn(
-                  "inline-flex h-10 items-center gap-2 rounded-full px-4 text-[12px] font-medium transition-colors",
+                  "inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[12px] font-medium text-white shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
                   isLight
-                    ? "bg-slate-900 text-white hover:bg-slate-700"
-                    : "border border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                    ? "border-white/28 bg-black/28 hover:bg-black/36"
+                    : "border-white/10 bg-white/5 hover:bg-white/10"
                 )}
               >
                 <MessageCircleMore className="h-3.5 w-3.5" />
@@ -558,8 +565,8 @@ export function RunwayLiveRoom({
             <button
               onClick={() => setRoomTheme((current) => (current === "light" ? "dark" : "light"))}
               className={cn(
-                "inline-flex h-10 w-10 items-center justify-center rounded-full transition-colors",
-                isLight ? "bg-white/80 text-slate-600 hover:text-slate-900" : "bg-white/10 text-white/60 hover:text-white"
+                "inline-flex h-10 w-10 items-center justify-center rounded-full border text-white shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-colors",
+                isLight ? "border-white/28 bg-white/14 hover:bg-white/18" : "border-white/10 bg-white/10 hover:bg-white/14"
               )}
               aria-label="Toggle room theme"
             >

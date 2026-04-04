@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import type { RunwayCharacterConfig, RunwaySessionInfo } from "@/types";
 import {
+  createRunwayAvatar,
   getRunwayAvatar,
   getRunwayAvatarVoiceConfig,
   updateRunwayAvatar,
@@ -133,7 +134,8 @@ export async function createCharacter(input: CreateCharacterInput) {
   if (existing) throw new Error("A character with this name already exists");
 
   const { voiceDbId } = await resolveVoiceSelection(input.userId, input.voiceId, input.voiceName);
-  const runwayCharacterId = input.runwayCharacterId?.trim() || null;
+  const requestedKnowledgeSourceIds = Array.from(new Set((input.knowledgeSourceIds || []).filter(Boolean)));
+  let runwayCharacterId = input.runwayCharacterId?.trim() || null;
 
   // Create the character record
   const character = await db.character.create({
@@ -156,11 +158,60 @@ export async function createCharacter(input: CreateCharacterInput) {
   });
 
   // Link knowledge sources if provided
-  if (input.knowledgeSourceIds?.length) {
-    await linkKnowledgeSources(character.id, input.knowledgeSourceIds);
+  if (requestedKnowledgeSourceIds.length > 0) {
+    await linkKnowledgeSources(character.id, requestedKnowledgeSourceIds);
   }
 
-  return character;
+  const runwaySyncErrors: string[] = [];
+  let runwayAvatarCreated = false;
+  let runwayKnowledgeUpdated = false;
+
+  if (!runwayCharacterId && input.avatarUrl?.trim() && env.RUNWAY_API_KEY) {
+    try {
+      const avatar = await createRunwayAvatar({
+        name: input.name,
+        bio: input.bio,
+        greeting: input.greeting,
+        personalityTone: input.personalityTone || "friendly",
+        avatarUrl: input.avatarUrl.trim(),
+      });
+      runwayCharacterId = (avatar as any)?.id?.trim?.() || (avatar as any)?.id || null;
+
+      if (!runwayCharacterId) {
+        throw new Error("Runway did not return an avatar ID");
+      }
+
+      await db.character.update({
+        where: { id: character.id },
+        data: { runwayCharacterId },
+      });
+      runwayAvatarCreated = true;
+    } catch (error: any) {
+      runwaySyncErrors.push(error?.message || "Failed to create Runway avatar");
+    }
+  }
+
+  if (runwayAvatarCreated && runwayCharacterId && env.RUNWAY_API_KEY) {
+    try {
+      await syncRunwayKnowledgeToAvatar(runwayCharacterId, input.userId, requestedKnowledgeSourceIds);
+      runwayKnowledgeUpdated = true;
+    } catch (error: any) {
+      runwaySyncErrors.push(error?.message || "Failed to sync Runway knowledge");
+    }
+  }
+
+  return {
+    character: {
+      ...character,
+      runwayCharacterId,
+    },
+    runwaySync: {
+      avatarCreated: runwayAvatarCreated,
+      knowledgeUpdated: runwayKnowledgeUpdated,
+      targetAvatarId: runwayCharacterId,
+      error: runwaySyncErrors.length > 0 ? runwaySyncErrors.join(" ") : null,
+    },
+  };
 }
 
 /**

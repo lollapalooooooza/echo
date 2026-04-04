@@ -267,7 +267,15 @@ async function ensureRunwayDocumentForSource(source: KnowledgeSourceForRunway) {
 }
 
 export async function resolveKnowledgeSourcesForRunway(userId: string, sourceIds?: string[]) {
-  const requestedIds = Array.from(new Set((sourceIds || []).filter(Boolean)));
+  const hasExplicitSelection = sourceIds !== undefined;
+  const requestedIds = hasExplicitSelection
+    ? Array.from(new Set((sourceIds || []).filter(Boolean)))
+    : [];
+
+  if (hasExplicitSelection && requestedIds.length === 0) {
+    return [] as KnowledgeSourceForRunway[];
+  }
+
   const where = requestedIds.length > 0
     ? { userId, id: { in: requestedIds }, status: "INDEXED" as const }
     : { userId, status: "INDEXED" as const };

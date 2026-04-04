@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const character = await createCharacter({
+    const result = await createCharacter({
       userId,
       name: body.name,
       bio: body.bio,
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       widgetTheme: body.widgetTheme,
       widgetPosition: body.widgetPosition,
     });
-    return NextResponse.json(character, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
     const status = err.message?.includes("already exists") ? 409 : 500;
     return NextResponse.json({ error: err.message }, { status });
