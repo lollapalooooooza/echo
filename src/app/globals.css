@@ -35,6 +35,8 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Reserve scrollbar gutter so layout doesn't shift when scrollbar appears */
+    scrollbar-gutter: stable;
   }
   h1, h2, h3 {
     font-family: var(--font-display);

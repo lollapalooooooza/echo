@@ -38,12 +38,17 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user }) {
       if (user?.id) {
-        await ensureUserProfile({
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image,
-        });
+        try {
+          await ensureUserProfile({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+          });
+        } catch (err) {
+          // Don't block sign-in if profile sync fails — user can still authenticate
+          console.error("[NextAuth] ensureUserProfile error:", err);
+        }
       }
 
       return true;

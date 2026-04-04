@@ -2,22 +2,35 @@
 import { signIn, useSession } from "next-auth/react";
 import { Loader2 } from "lucide-react";
 import { Suspense, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 import { BrandMark } from "@/components/brand-mark";
 
+const AUTH_ERRORS: Record<string, string> = {
+  OAuthSignin: "Could not start the sign-in process. Please try again.",
+  OAuthCallback: "The sign-in callback failed. Make sure cookies are enabled and try again.",
+  OAuthCreateAccount: "Could not create your account. Please try again.",
+  EmailCreateAccount: "Could not create your account. Please try again.",
+  Callback: "Sign-in failed during the callback. Please try again.",
+  OAuthAccountNotLinked: "This email is already linked to a different sign-in method.",
+  AccessDenied: "Access was denied. Please try again.",
+  Configuration: "There is a server configuration issue. Please contact support.",
+  Default: "Something went wrong during sign-in. Please try again.",
+};
+
 function AuthPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { status } = useSession();
   const callbackUrl = searchParams.get("callbackUrl") || "/creator";
+  const errorCode = searchParams.get("error");
+  const errorMessage = errorCode ? (AUTH_ERRORS[errorCode] ?? AUTH_ERRORS.Default) : null;
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace(callbackUrl);
-      router.refresh();
+      // Use hard navigation so the session cookie is fully recognized on the destination page
+      window.location.href = callbackUrl;
     }
-  }, [callbackUrl, router, status]);
+  }, [callbackUrl, status]);
 
   if (status === "authenticated" || status === "loading") {
     return (
@@ -63,6 +76,12 @@ function AuthPageInner() {
           <div className="rounded-[30px] border border-border bg-white p-7 shadow-[0_18px_60px_-42px_rgba(15,23,42,0.32)]">
           <h1 className="mb-1 text-xl font-semibold" style={{fontFamily:"var(--font-display)"}}>Sign in to EchoNest</h1>
           <p className="mb-6 text-sm text-muted-foreground">Create, manage, and analyze your living knowledge characters.</p>
+
+          {errorMessage && (
+            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-[13px] font-medium text-red-700">{errorMessage}</p>
+            </div>
+          )}
 
           <div className="space-y-3">
             <button onClick={() => signIn("google", { callbackUrl })}

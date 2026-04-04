@@ -58,6 +58,7 @@ export default function LobbyPage() {
   const [podcastMode, setPodcastMode] = useState(false);
   const [podcastSelection, setPodcastSelection] = useState<string[]>([]);
   const [podcastTopic, setPodcastTopic] = useState("");
+  const [podcastSearch, setPodcastSearch] = useState("");
 
   useEffect(() => {
     fetch("/api/characters")
@@ -85,6 +86,16 @@ export default function LobbyPage() {
     const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.bio.toLowerCase().includes(search.toLowerCase());
     const matchTone = activeTone === "all" || c.personalityTone === activeTone;
     return matchSearch && matchTone;
+  });
+
+  const filteredPodcasts = podcasts.filter((p) => {
+    if (!podcastSearch) return true;
+    const q = podcastSearch.toLowerCase();
+    return (
+      p.topic?.toLowerCase().includes(q) ||
+      p.characterA?.name?.toLowerCase().includes(q) ||
+      p.characterB?.name?.toLowerCase().includes(q)
+    );
   });
 
   const togglePodcastChar = (charId: string) => {
@@ -126,56 +137,61 @@ export default function LobbyPage() {
       <div className="mx-auto max-w-6xl px-6 py-10">
         {/* Hero section */}
         <div className="mb-10">
-          <div className="mb-3 inline-flex items-center rounded-full border border-border/60 bg-neutral-50 p-0.5">
-            <button
-              onClick={() => { setLobbyTab("characters"); setPodcastMode(false); setPodcastSelection([]); setPodcastTopic(""); }}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium uppercase tracking-wider transition-all",
-                lobbyTab === "characters"
-                  ? "bg-white text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Character Lobby
-            </button>
-            <button
-              onClick={() => { setLobbyTab("podcasts"); setPodcastMode(false); setPodcastSelection([]); setPodcastTopic(""); }}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium uppercase tracking-wider transition-all",
-                lobbyTab === "podcasts"
-                  ? "bg-white text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Headphones className="h-3.5 w-3.5" />
-              Podcast Lobby
-            </button>
-          </div>
           <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-10">
-            <div className="max-w-xl">
-              <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
-                {lobbyTab === "characters" ? "Discover EchoNest characters." : "Discover EchoNest podcasts."}
-              </h1>
-              <p className="mt-2 max-w-lg text-[15px] text-muted-foreground">
-                {lobbyTab === "characters"
-                  ? "Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise."
-                  : "Two AI characters, one topic. Tune into a live podcast or publish your own character combo."}
-              </p>
+            {/* Left column: toggle + title + subtitle */}
+            <div>
+              <div className="mb-3 inline-flex items-center rounded-full border border-border/60 bg-neutral-50 p-0.5">
+                <button
+                  onClick={() => { setLobbyTab("characters"); setPodcastMode(false); setPodcastSelection([]); setPodcastTopic(""); }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium uppercase tracking-wider transition-all",
+                    lobbyTab === "characters"
+                      ? "bg-white text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Character Lobby
+                </button>
+                <button
+                  onClick={() => { setLobbyTab("podcasts"); setPodcastMode(false); setPodcastSelection([]); setPodcastTopic(""); }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium uppercase tracking-wider transition-all",
+                    lobbyTab === "podcasts"
+                      ? "bg-white text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Headphones className="h-3.5 w-3.5" />
+                  Podcast Lobby
+                </button>
+              </div>
+              <div className="max-w-xl">
+                <h1 className="text-[2rem] font-semibold tracking-tight leading-tight" style={{ fontFamily: "var(--font-display)" }}>
+                  {lobbyTab === "characters" ? "Discover EchoNest characters." : "Discover EchoNest podcasts."}
+                </h1>
+                <p className="mt-2 max-w-lg text-[15px] text-muted-foreground">
+                  {lobbyTab === "characters"
+                    ? "Each character is powered by real knowledge. Start a live conversation to learn directly from their expertise."
+                    : "Two AI characters, one topic. Tune into a live podcast or publish your own character combo."}
+                </p>
+              </div>
             </div>
-            {lobbyTab === "characters" && <div className="flex items-center justify-end self-stretch">
-              <button
-                type="button"
-                onClick={() => {
-                  setPodcastMode((current) => !current);
-                  setPodcastSelection([]);
-                  setPodcastTopic("");
-                }}
-                className={cn(
-                  "group relative inline-flex w-fit shrink-0 rounded-[28px] transition-transform duration-300 hover:-translate-y-1",
-                  podcastMode ? "scale-[1.01]" : ""
-                )}
-                aria-label="Open podcast studio mode"
+            {/* Right column: TV icon — centered with the full left column (toggle + title + subtitle) */}
+            {lobbyTab === "characters" && (
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPodcastMode((current) => !current);
+                    setPodcastSelection([]);
+                    setPodcastTopic("");
+                  }}
+                  className={cn(
+                    "group relative inline-flex w-fit shrink-0 rounded-[28px] transition-transform duration-300 hover:-translate-y-1",
+                    podcastMode ? "scale-[1.01]" : ""
+                  )}
+                  aria-label="Open podcast studio mode"
                 >
                   <img
                     src="/podcasticon.png"
@@ -186,9 +202,10 @@ export default function LobbyPage() {
                     )}
                   />
                 </button>
-              </div>}
-            </div>
+              </div>
+            )}
           </div>
+        </div>
 
         {/* Search + filters (characters only) */}
         {lobbyTab === "characters" && <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -276,6 +293,21 @@ export default function LobbyPage() {
           </div>
         )}
 
+        {/* Podcast search bar */}
+        {lobbyTab === "podcasts" && !podcastsLoading && podcasts.length > 0 && (
+          <div className="mb-8">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+              <input
+                value={podcastSearch}
+                onChange={(e) => setPodcastSearch(e.target.value)}
+                placeholder="Search by topic or character…"
+                className="h-10 w-full rounded-xl border border-border/60 bg-white pl-10 pr-4 text-sm outline-none transition-colors focus:border-neutral-400 focus:ring-2 focus:ring-neutral-100"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Podcast Grid */}
         {lobbyTab === "podcasts" && (
           podcastsLoading ? (
@@ -290,16 +322,21 @@ export default function LobbyPage() {
                 Switch to the Character Lobby and use podcast mode to create one!
               </p>
             </div>
+          ) : filteredPodcasts.length === 0 ? (
+            <div className="py-24 text-center">
+              <Search className="mx-auto mb-4 h-12 w-12 text-muted-foreground/20" />
+              <p className="text-sm text-muted-foreground">No podcasts match your search.</p>
+            </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {podcasts.map((p: any) => {
+              {filteredPodcasts.map((p: any) => {
                 const toneA = toneCfg[p.characterA?.personalityTone] || toneCfg.friendly;
                 const toneB = toneCfg[p.characterB?.personalityTone] || toneCfg.friendly;
 
                 return (
                   <Link
                     key={p.id}
-                    href={`/podcast?a=${p.characterAId}&b=${p.characterBId}&topic=${encodeURIComponent(p.topic)}`}
+                    href={`/podcast?a=${p.characterAId}&b=${p.characterBId}&topic=${encodeURIComponent(p.topic)}&from=lobby`}
                     className="group relative flex flex-col overflow-hidden rounded-[28px] border border-border/50 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-neutral-200/70"
                   >
                     {/* Dual avatar header */}
