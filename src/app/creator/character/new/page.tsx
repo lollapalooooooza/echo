@@ -35,7 +35,7 @@ export default function NewCharacterPage() {
   const [knowledgeSources, setKnowledgeSources] = useState<any[]>([]);
   const [loadingKnowledge, setLoadingKnowledge] = useState(true);
   const [form, setForm] = useState({
-    name: "", bio: "", greeting: "", personalityTone: "friendly", avatarUrl: "",
+    name: "", bio: "", greeting: "", personalityTone: "friendly", personality: "", avatarUrl: "",
     voiceId: "", voiceName: "", runwayCharacterId: "",
     suggestedQuestions: [""], publish: true,
     allowedDomains: [""], widgetTheme: "light", widgetPosition: "bottom-right",
@@ -236,6 +236,18 @@ export default function NewCharacterPage() {
               ))}
             </div>
           </Field>
+          <Field label="Personality">
+            <textarea
+              value={form.personality}
+              onChange={(e) => set("personality", e.target.value)}
+              rows={4}
+              placeholder="Add direct personality instructions, mannerisms, boundaries, or speaking habits for this character."
+              className="w-full rounded-lg border border-border p-3 text-sm outline-none resize-none focus:border-foreground transition-colors"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              This becomes part of both the Runway live persona and Echo fallback chat behavior.
+            </p>
+          </Field>
           <Field label="Suggested questions">
             <div className="space-y-2">
               {form.suggestedQuestions.filter(Boolean).map((q, i) => (
@@ -280,7 +292,7 @@ export default function NewCharacterPage() {
             <input value={form.runwayCharacterId} onChange={(e) => set("runwayCharacterId", e.target.value)}
               placeholder="Optional existing avat_xxx"
               className="h-9 w-full rounded-lg border border-border px-3 text-sm outline-none focus:border-foreground transition-colors" />
-            <p className="mt-1 text-[11px] text-muted-foreground">Paste an existing Runway avatar ID to use it as-is. If you leave this blank, Echo will create the character without any Runway avatar attached; you can generate one later from the edit page if you want a brand-new Runway avatar.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">Paste an existing Runway avatar ID to use it as-is. If you leave this blank and upload an avatar image, Echo will create a new Runway avatar when you save.</p>
           </Field>
         </Section>
 

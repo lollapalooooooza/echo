@@ -211,6 +211,7 @@ export async function* orchestrateChat(
     character.name,
     character.bio,
     character.personalityTone,
+    character.personality,
     sourcesForPrompt
   );
 

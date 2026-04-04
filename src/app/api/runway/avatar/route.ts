@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
       bio: character.bio,
       greeting: character.greeting,
       personalityTone: character.personalityTone,
+      personality: character.personality || undefined,
       avatarUrl: character.avatarUrl.trim(),
       voice: preservedVoice,
       voicePreset:

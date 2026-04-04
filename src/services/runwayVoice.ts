@@ -229,10 +229,12 @@ export function buildRunwayPersonality(input: {
   name?: string | null;
   bio?: string | null;
   tone?: string | null;
+  personality?: string | null;
 }) {
   const tone = normalize(input.tone) || "friendly";
   const name = input.name?.trim() || "";
   const sanitizedBio = sanitizeRunwayBio(input.bio || "", name);
+  const personality = (input.personality || "").replace(/\s+/g, " ").trim().slice(0, 700);
   const bio = sanitizedBio.toLowerCase();
   const adjectives: string[] = [];
   const seen = new Set<string>();
@@ -262,11 +264,17 @@ export function buildRunwayPersonality(input: {
   }
 
   const style = adjectives.slice(0, 8).join(", ");
+  const personalitySentence = personality
+    ? /[.!?]$/.test(personality)
+      ? personality
+      : `${personality}.`
+    : "";
   const lines = [
     `Adopt a ${tone} conversational style that feels ${style}.`,
     sanitizedBio
       ? `Core personality and expertise: ${sanitizedBio}.`
       : "Be concise, clear, and conversational.",
+    personalitySentence ? `Additional character directions: ${personalitySentence}` : null,
     "Stay grounded in the attached knowledge and current conversation context.",
     "Respond naturally to what the visitor says instead of waiting passively.",
     "Do not claim any real-world human identity or introduce yourself with a personal name.",
@@ -280,6 +288,7 @@ export function buildRunwaySessionPersonality(input: {
   name?: string | null;
   bio?: string | null;
   tone?: string | null;
+  personality?: string | null;
   enableArticleTool?: boolean;
 }) {
   const corePrompt = buildRunwayPersonality(input);

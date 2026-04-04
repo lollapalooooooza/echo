@@ -500,6 +500,17 @@ export default function EditCharacterPage({ params }: { params: { id: string } }
               <div><label className="mb-1 block text-[13px] font-medium">Bio</label><textarea value={char.bio} onChange={e => setChar((p: any) => ({ ...p, bio: e.target.value }))} rows={3} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" /></div>
               <div><label className="mb-1 block text-[13px] font-medium">Greeting</label><textarea value={char.greeting} onChange={e => setChar((p: any) => ({ ...p, greeting: e.target.value }))} rows={3} className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground" /></div>
               <div>
+                <label className="mb-1 block text-[13px] font-medium">Personality</label>
+                <textarea
+                  value={char.personality || ""}
+                  onChange={e => setChar((p: any) => ({ ...p, personality: e.target.value }))}
+                  rows={4}
+                  placeholder="Add direct personality instructions, mannerisms, boundaries, or speaking habits."
+                  className="w-full rounded-md border border-border p-3 text-sm outline-none resize-none focus:border-foreground"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">This text is used for the Runway live persona and Echo fallback chat behavior.</p>
+              </div>
+              <div>
                 <label className="mb-1 block text-[13px] font-medium">Runway Avatar ID</label>
                 <input value={char.runwayCharacterId || ""} onChange={e => setChar((p: any) => ({ ...p, runwayCharacterId: e.target.value }))} placeholder="Optional: avat_xxx" className="h-9 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-foreground" />
                 <p className="mt-1 text-[11px] text-muted-foreground">Use this for a true real-time avatar if you already have a Runway character ID.</p>

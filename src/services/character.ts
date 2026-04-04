@@ -51,6 +51,7 @@ export interface CreateCharacterInput {
   bio: string;
   greeting: string;
   personalityTone: string;
+  personality?: string;
   avatarUrl?: string;
   voiceId?: string;
   voiceName?: string;
@@ -136,6 +137,7 @@ export async function createCharacter(input: CreateCharacterInput) {
   const { voiceDbId } = await resolveVoiceSelection(input.userId, input.voiceId, input.voiceName);
   const requestedKnowledgeSourceIds = Array.from(new Set((input.knowledgeSourceIds || []).filter(Boolean)));
   let runwayCharacterId = input.runwayCharacterId?.trim() || null;
+  const personality = input.personality?.trim() || null;
 
   // Create the character record
   const character = await db.character.create({
@@ -147,6 +149,7 @@ export async function createCharacter(input: CreateCharacterInput) {
       bio: input.bio,
       greeting: input.greeting,
       personalityTone: input.personalityTone || "friendly",
+      personality,
       voiceId: voiceDbId,
       runwayCharacterId,
       suggestedQuestions: input.suggestedQuestions || [],
@@ -173,6 +176,7 @@ export async function createCharacter(input: CreateCharacterInput) {
         bio: input.bio,
         greeting: input.greeting,
         personalityTone: input.personalityTone || "friendly",
+        personality: personality || undefined,
         avatarUrl: input.avatarUrl.trim(),
       });
       runwayCharacterId = (avatar as any)?.id?.trim?.() || (avatar as any)?.id || null;
@@ -243,6 +247,10 @@ export async function updateCharacter(
   const nextBio = updates.bio ?? char.bio;
   const nextGreeting = updates.greeting ?? char.greeting;
   const nextPersonalityTone = updates.personalityTone ?? char.personalityTone;
+  const nextPersonality =
+    updates.personality === undefined
+      ? char.personality
+      : updates.personality?.trim() || null;
   const nextAvatarUrl =
     updates.avatarUrl === undefined ? char.avatarUrl : updates.avatarUrl?.trim() || null;
   const didRunwayCharacterIdChange = nextRunwayCharacterId !== currentRunwayCharacterId;
@@ -251,6 +259,7 @@ export async function updateCharacter(
     nextBio !== char.bio ||
     nextGreeting !== char.greeting ||
     nextPersonalityTone !== char.personalityTone ||
+    nextPersonality !== char.personality ||
     (nextAvatarUrl || null) !== (char.avatarUrl || null);
   const shouldSyncRunwayProfile =
     !!targetRunwayCharacterId &&
@@ -268,6 +277,8 @@ export async function updateCharacter(
       bio: updates.bio,
       greeting: updates.greeting,
       personalityTone: updates.personalityTone,
+      personality:
+        updates.personality === undefined ? undefined : updates.personality?.trim() || null,
       avatarUrl: updates.avatarUrl === undefined ? undefined : updates.avatarUrl?.trim() || null,
       voiceId: resolvedVoice.voiceDbId,
       runwayCharacterId: updates.runwayCharacterId === undefined ? undefined : nextRunwayCharacterId,
@@ -307,6 +318,7 @@ export async function updateCharacter(
         bio: nextBio,
         greeting: nextGreeting,
         personalityTone: nextPersonalityTone,
+        personality: nextPersonality || undefined,
         avatarUrl: nextAvatarUrl || undefined,
         voice: preservedVoice,
       });

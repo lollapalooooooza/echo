@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS "Character" (
   "bio" TEXT NOT NULL,
   "greeting" TEXT NOT NULL,
   "personalityTone" TEXT NOT NULL DEFAULT 'friendly',
+  "personality" TEXT,
   "voiceId" TEXT,
   "runwayCharacterId" TEXT,
   "runwaySessionId" TEXT,
@@ -182,6 +183,8 @@ CREATE TABLE IF NOT EXISTS "Character" (
 CREATE UNIQUE INDEX IF NOT EXISTS "Character_slug_key" ON "Character"("slug");
 CREATE INDEX IF NOT EXISTS "Character_userId_idx" ON "Character"("userId");
 CREATE INDEX IF NOT EXISTS "Character_status_idx" ON "Character"("status");
+
+ALTER TABLE "Character" ADD COLUMN IF NOT EXISTS "personality" TEXT;
 
 -- ── Conversations ───────────────────────────────────────────
 

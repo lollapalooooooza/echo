@@ -76,6 +76,7 @@ export interface CharacterConfig {
   bio: string;
   greeting: string;
   personalityTone: string;
+  personality?: string | null;
   voiceId?: string | null;
   runwayCharacterId?: string | null;
   runwaySessionId?: string | null;

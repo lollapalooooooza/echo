@@ -126,6 +126,7 @@ export async function createRunwayAvatar(input: {
   bio: string;
   greeting: string;
   personalityTone: string;
+  personality?: string;
   avatarUrl: string;
   voicePreset?: string;
   voice?: RunwayAvatarVoiceConfig | null;
@@ -148,6 +149,7 @@ export async function createRunwayAvatar(input: {
       name: input.name,
       bio: input.bio,
       tone: input.personalityTone,
+      personality: input.personality,
     }),
     referenceImage,
     startScript: input.greeting || undefined,
@@ -164,6 +166,7 @@ export async function updateRunwayAvatar(
     bio?: string;
     greeting?: string;
     personalityTone?: string;
+    personality?: string;
     avatarUrl?: string;
     voicePreset?: string;
     voice?: RunwayAvatarVoiceConfig | null;
@@ -188,6 +191,7 @@ export async function updateRunwayAvatar(
             name: input.name,
             bio: input.bio,
             tone: input.personalityTone,
+            personality: input.personality,
           })
         : undefined,
     startScript: input.greeting,

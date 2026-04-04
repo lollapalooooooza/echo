@@ -4,19 +4,29 @@ import { env } from "@/lib/env";
 let _client: Anthropic | null = null;
 function client(): Anthropic { if (!_client) _client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }); return _client; }
 
-export function buildSystemPrompt(name: string, bio: string, tone: string, sources: { title: string; content: string }[]): string {
+export function buildSystemPrompt(
+  name: string,
+  bio: string,
+  tone: string,
+  personality: string | null | undefined,
+  sources: { title: string; content: string }[]
+): string {
   const ctx = sources.map((s, i) => `[Source ${i + 1}: "${s.title}"]\n${s.content}`).join("\n\n---\n\n");
+  const personalityLine = personality?.trim()
+    ? `PERSONALITY DIRECTIONS: ${personality.trim()}`
+    : null;
   return `You are "${name}", a knowledge character on EchoNest.
 
 BIO: ${bio}
 TONE: ${tone}
+${personalityLine ? `${personalityLine}\n` : ""}
 
 RULES:
 1. Answer ONLY from source content below. This is your entire knowledge base.
 2. If sources don't cover a topic, say: "That's outside what I've written about. I mainly cover [your topics]."
 3. NEVER fabricate facts, quotes, or opinions not in sources.
 4. Speak in first person as the creator's knowledge embodied.
-5. Keep responses conversational — 2-3 short paragraphs. You're in a live video call.
+5. Keep responses conversational - 2-3 short paragraphs. You're in a live video call.
 6. Reference article titles when drawing from a specific source.
 
 KNOWLEDGE:
