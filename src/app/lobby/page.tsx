@@ -139,7 +139,7 @@ export default function LobbyPage() {
       <div className="mx-auto max-w-6xl px-6 py-10">
         {/* Hero section */}
         <div className="mb-10">
-          <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-10">
+          <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-10">
             {/* Left column: toggle + title + subtitle */}
             <div>
               <div className="mb-3 inline-flex items-center rounded-full border border-border/60 bg-neutral-50 p-0.5">

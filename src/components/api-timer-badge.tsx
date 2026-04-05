@@ -16,7 +16,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Cpu, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,9 +51,6 @@ export function ApiTimerBadge({ size = "default" }: { size?: "default" | "sm" })
   const { status } = useSession();
   const [credits, setCredits] = useState<Credits | null>(null);
   const [loading, setLoading] = useState(true);
-  // Live countdown — ticks down 1 s every second during an active session
-  const [localSecs, setLocalSecs] = useState<number | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchCredits = async () => {
     try {
@@ -61,7 +58,6 @@ export function ApiTimerBadge({ size = "default" }: { size?: "default" | "sm" })
       if (!res.ok) return;
       const data: Credits = await res.json();
       setCredits(data);
-      setLocalSecs(data.secondsRemaining);
     } catch {
       // ignore
     } finally {
@@ -72,22 +68,10 @@ export function ApiTimerBadge({ size = "default" }: { size?: "default" | "sm" })
   useEffect(() => {
     if (status !== "authenticated") return;
     void fetchCredits();
+    // Re-fetch every 30 s to keep the displayed balance fresh
     const poll = setInterval(fetchCredits, 30_000);
     return () => clearInterval(poll);
   }, [status]);
-
-  // Tick down locally between server polls so it feels live
-  useEffect(() => {
-    if (localSecs === null || localSecs <= 0) return;
-    // Only tick for free-tier users (own-key is credited server-side)
-    if (credits?.mode === "own") return;
-    intervalRef.current = setInterval(() => {
-      setLocalSecs((s) => (s !== null && s > 0 ? s - 1 : 0));
-    }, 1_000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [credits?.mode, localSecs === null]);
 
   if (status !== "authenticated") return null;
   if (loading) {
@@ -99,7 +83,7 @@ export function ApiTimerBadge({ size = "default" }: { size?: "default" | "sm" })
   }
   if (!credits) return null;
 
-  const secs = localSecs ?? credits.secondsRemaining;
+  const secs = credits.secondsRemaining;
   const colorClass = timerColor(secs, credits.mode);
   const isSmall = size === "sm";
 
